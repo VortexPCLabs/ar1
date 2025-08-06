@@ -1,56 +1,89 @@
 <!doctype html>
-<html>
-    <head>
-        <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-        <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-        <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-        <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
-        <script>
-            AFRAME.registerComponent('videohandler', {
-                init: function () {
-                    var marker = this.el;
-                    this.vid = document.querySelector("#vid");
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>AR-video con sonido</title>
 
-                    marker.addEventListener('markerFound', function () {
-                        this.toggle = true;
-                        this.vid.play();
-                    }.bind(this));
+    <!-- A-Frame + AR.js -->
+    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
-                    marker.addEventListener('markerLost', function () {
-                        this.toggle = false;
-                        this.vid.pause();
-                    }.bind(this));
-                },
-            });
-        </script>
-    </head>
+    <!-- Gestos (pinch-zoom / rotate) -->
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <body style="margin: 0; overflow: hidden;">
-        <a-scene
-            vr-mode-ui="enabled: false"
-            loading-screen="enabled: false;"
-            arjs='sourceType: webcam; debugUIEnabled: false;'
-            id="scene"
-            embedded
-            gesture-detector
-        >
-            <a-assets>
-                <video
-                    id="vid"
-                    src="assets/asset.mp4"
-                    preload="auto"
-                    response-type="arraybuffer"
-                    loop
-                    crossorigin
-                    webkit-playsinline
-                    autoplay
-                    muted
-                    playsinline
-                ></video>
-            </a-assets>
+    <!-- Componente para controlar el vídeo -->
+    <script>
+      AFRAME.registerComponent('videohandler', {
+        init () {
+          const marker = this.el;
+          const vid    = document.querySelector('#vid');
+          const overlay = document.getElementById('overlay');
 
-            <a-marker
-                type="pattern"
+          /* ---------- 1) Desbloquear audio con el primer gesto ---------- */
+          const unlockAudio = () => {
+            // Quita mute y reproduce
+            vid.muted = false;
+            vid.play().catch(() => {/* silence any promise rej. */});
+
+            // Oculta overlay
+            overlay.style.display = 'none';
+
+            // Sólo se necesita una vez
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchend', unlockAudio);
+          };
+
+          window.addEventListener('click',  unlockAudio);
+          window.addEventListener('touchend', unlockAudio);
+
+          /* ---------- 2) Controlar play/pause según el marcador ---------- */
+          marker.addEventListener('markerFound', () => vid.play());
+          marker.addEventListener('markerLost',  () => vid.pause());
+        }
+      });
+    </script>
+
+    <style>
+      /* Overlay “Toca para activar audio” */
+      #overlay{
+        position:fixed; inset:0;
+        display:flex; align-items:center; justify-content:center;
+        background:rgba(0,0,0,.75);
+        color:#fff; font-family:sans-serif; font-size:1.25rem; z-index:999;
+        text-align:center; padding:1rem;
+      }
+    </style>
+  </head>
+
+  <body style="margin:0; overflow:hidden;">
+    <!-- Overlay -->
+    <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
+
+    <!-- A-Frame scene -->
+    <a-scene
+      vr-mode-ui="enabled: false"
+      loading-screen="enabled: false"
+      arjs="sourceType: webcam; debugUIEnabled: false"
+      embedded
+      gesture-detector
+      id="scene">
+
+      <!-- Activos -->
+      <a-assets>
+        <!-- IMPORTANTE: sin muted ni autoplay  -->
+        <video id="vid"
+               src="assets/asset.mp4"
+               preload="auto"
+               loop
+               crossorigin="anonymous"
+               playsinline
+               webkit-playsinline>
+        </video>
+      </a-assets>
+
+      <!-- Marcador -->
+      <a-marker type="pattern"
                 preset="custom"
                 url="assets/marker.patt"
                 videohandler
@@ -61,19 +94,21 @@
                 raycaster="objects: .clickable"
                 emitevents="true"
                 cursor="fuse: false; rayOrigin: mouse;"
-                id="markerA"
-            >
-                <a-video
-                    src="#vid"
-                    scale="1 1 1"
-                    position="0 0.1 0"
-                    rotation="-90 0 0"
-                    class="clickable"
-                    gesture-handler
-                ></a-video>
-            </a-marker>
+                id="markerA">
 
-            <a-entity camera></a-entity>
-        </a-scene>
-    </body>
+        <!-- Plano de vídeo -->
+        <a-video src="#vid"
+                 scale="1 1 1"
+                 position="0 0.1 0"
+                 rotation="-90 0 0"
+                 class="clickable"
+                 gesture-handler>
+        </a-video>
+      </a-marker>
+
+      <!-- Cámara -->
+      <a-entity camera></a-entity>
+
+    </a-scene>
+  </body>
 </html>
