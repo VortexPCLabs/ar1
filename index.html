@@ -2,9 +2,9 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>AR-video con sonido al detectar la marca</title>
+    <title>AR + video con sonido al detectar la marca</title>
 
-    <!-- A-Frame y AR.js -->
+    <!-- A-Frame & AR.js -->
     <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
@@ -12,64 +12,81 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <!-- Componente para gestionar el vídeo -->
+    <!-- Componente para reproducir vídeo solo cuando:
+         1) el usuario ya interactuó (desbloquea audio) y
+         2) la marca está visible                                       -->
     <script>
       AFRAME.registerComponent('videohandler', {
         init () {
           const marker = this.el;
           const vid    = document.querySelector('#vid');
 
-          /* ---- 1) Esperar UN gesto para desbloquear audio ---- */
-          let audioUnlocked = false;
-          const unlockAudio = () => {
-            audioUnlocked = true;          // ya hay gesto
-            if (!vid.paused && marker.object3D.visible) {
-              vid.muted = false;           // si la marca está a la vista, suelta el mute
-            }
-            window.removeEventListener('click', unlockAudio);
-            window.removeEventListener('touchend', unlockAudio);
-          };
-          window.addEventListener('click',  unlockAudio);     // desktop
-          window.addEventListener('touchend', unlockAudio);   // móviles
+          let audioUnlocked = false;  // ¿ya hubo gesto?
+          let markerVisible = false;  // ¿marca a la vista?
 
-          /* ---- 2) Play / pause según la marca ---- */
+          /* --- 1) Esperar UN tap/click para habilitar audio --- */
+          const unlock = () => {
+            audioUnlocked = true;
+            tryPlay();
+            window.removeEventListener('click',  unlock);
+            window.removeEventListener('touchend', unlock);
+          };
+          window.addEventListener('click',  unlock);
+          window.addEventListener('touchend', unlock);
+
+          /* --- 2) Controlar visibilidad de la marca --- */
           marker.addEventListener('markerFound', () => {
-            vid.muted = !audioUnlocked;     // true si aún no hay gesto
-            vid.play().catch(() => {});     // silencioso si falla
+            markerVisible = true;
+            tryPlay();
+          });
+          marker.addEventListener('markerLost', () => {
+            markerVisible = false;
+            vid.pause();
           });
 
-          marker.addEventListener('markerLost', () => vid.pause());
+          /* --- 3) Reproducir sólo si se cumplen las dos condiciones --- */
+          function tryPlay () {
+            if (audioUnlocked && markerVisible) {
+              vid.play().catch(() => {});  // ignora errores de política
+            }
+          }
         }
       });
     </script>
+
+    <!-- Opcional: hace transparente el fondo del renderizador -->
+    <style>
+      html,body{margin:0;overflow:hidden;background:#000;}
+      a-scene{position:fixed;top:0;left:0;width:100%;height:100%;}
+    </style>
   </head>
 
-  <body style="margin:0; overflow:hidden;">
+  <body>
 
-    <!-- Escena A-Frame -->
+    <!-- Escena AR -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam; debugUIEnabled:false"
+      renderer="alpha:true"
+      arjs="sourceType:webcam;debugUIEnabled:false"
       embedded
       gesture-detector
       id="scene">
 
       <!-- Activos -->
       <a-assets>
-        <!-- Arranca silenciado (muted).  SIN autoplay -->
+        <!-- SIN muted / SIN autoplay para que el sonido arranque normal -->
         <video id="vid"
                src="assets/asset.mp4"
                preload="auto"
                loop
-               muted
                crossorigin="anonymous"
                playsinline
                webkit-playsinline>
         </video>
       </a-assets>
 
-      <!-- Marcador AR -->
+      <!-- Marcador -->
       <a-marker type="pattern"
                 preset="custom"
                 url="assets/marker.patt"
@@ -78,12 +95,11 @@
                 smoothCount="10"
                 smoothTolerance="0.01"
                 smoothThreshold="5"
-                raycaster="objects: .clickable"
+                raycaster="objects:.clickable"
                 emitevents="true"
-                cursor="fuse:false; rayOrigin:mouse;"
+                cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
 
-        <!-- Plano de vídeo -->
         <a-video src="#vid"
                  scale="1 1 1"
                  position="0 0.1 0"
