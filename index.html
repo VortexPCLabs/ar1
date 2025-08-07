@@ -2,29 +2,31 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>AR – vídeo con sonido al detectar la marca</title>
+    <title>AR-video con sonido</title>
 
     <!-- A-Frame + AR.js -->
     <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
-    <!-- Gestos (pinch / rotate) -->
+    <!-- Gestos pinch / rotate -->
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <!-- Componente: reproduce vídeo sólo si (1) hubo tap y (2) la marca está a la vista -->
+    <!-- Componente vídeo -->
     <script>
       AFRAME.registerComponent('videohandler', {
         init () {
-          const marker = this.el;
-          const video  = document.querySelector('#vid');
+          const marker  = this.el;
+          const vid     = document.querySelector('#vid');
+          const overlay = document.getElementById('overlay');
 
-          let tapOk        = false;  // ¿el usuario ya tocó?
-          let markerOn     = false;  // ¿la marca está visible?
+          let tapDone   = false;   // ¿el usuario ya tocó?
+          let markerOn  = false;   // ¿la marca está visible?
 
-          /* 1 . Un solo gesto para habilitar audio */
+          /* ---- 1) Primer tap: desbloquea audio ---- */
           const unlock = () => {
-            tapOk = true;
+            tapDone = true;
+            overlay.style.display = 'none';
             tryPlay();
             window.removeEventListener('click',  unlock);
             window.removeEventListener('touchend', unlock);
@@ -32,20 +34,21 @@
           window.addEventListener('click',  unlock);
           window.addEventListener('touchend', unlock);
 
-          /* 2 . Visibilidad de la marca */
+          /* ---- 2) Marca encontrada / perdida ---- */
           marker.addEventListener('markerFound', () => {
             markerOn = true;
             tryPlay();
           });
           marker.addEventListener('markerLost', () => {
             markerOn = false;
-            video.pause();
+            vid.pause();
           });
 
-          /* 3 . Reproduce únicamente si ambas condiciones se cumplen */
+          /* ---- 3) Reproducir sólo si tap + marca ---- */
           function tryPlay () {
-            if (tapOk && markerOn) {
-              video.play().catch(()=>{});      // ignora posibles bloqueos
+            if (tapDone && markerOn) {
+              vid.muted = false;              // asegurarse de que suene
+              vid.play().catch(() => {});     // ignora bloqueos extra
             }
           }
         }
@@ -53,23 +56,33 @@
     </script>
 
     <style>
-      /* Nada que tape la cámara */
-      html,body{margin:0;overflow:hidden;}
-      a-scene{position:fixed;top:0;left:0;width:100%;height:100%;}
+      /* Overlay “Toca para activar audio” — ahora transparente  */
+      #overlay{
+        position:fixed; inset:0;
+        display:flex; align-items:center; justify-content:center;
+        background:transparent;               /* ← sin gris */
+        color:#fff; font-family:sans-serif; font-size:1.25rem;
+        text-shadow:0 0 6px #000;             /* para que se lea sobre cámara */
+        z-index:999; text-align:center; padding:1rem;
+      }
     </style>
   </head>
 
-  <body>
+  <body style="margin:0; overflow:hidden;">
+    <!-- Overlay -->
+    <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
 
+    <!-- Escena -->
     <a-scene
-      embedded
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
       arjs="sourceType:webcam;debugUIEnabled:false"
-      gesture-detector>
+      embedded
+      gesture-detector
+      id="scene">
 
       <a-assets>
-        <!-- sin muted ni autoplay -->
+        <!-- sin muted / sin autoplay -->
         <video id="vid"
                src="assets/asset.mp4"
                preload="auto"
@@ -80,22 +93,27 @@
       </a-assets>
 
       <a-marker type="pattern"
+                preset="custom"
                 url="assets/marker.patt"
                 videohandler
                 smooth="true"
                 smoothCount="10"
                 smoothTolerance="0.01"
-                smoothThreshold="5">
+                smoothThreshold="5"
+                raycaster="objects:.clickable"
+                emitevents="true"
+                cursor="fuse:false;rayOrigin:mouse"
+                id="markerA">
 
         <a-video src="#vid"
                  scale="1 1 1"
                  position="0 0.1 0"
                  rotation="-90 0 0"
+                 class="clickable"
                  gesture-handler></a-video>
       </a-marker>
 
       <a-entity camera></a-entity>
     </a-scene>
-
   </body>
 </html>
