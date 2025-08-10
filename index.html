@@ -12,33 +12,47 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <!-- Script para elegir cámara gran angular -->
+    <!-- Script para seleccionar la cámara más adecuada -->
     <script>
       async function selectCameraAndStart() {
         const scene = document.querySelector('a-scene');
 
         try {
+          // Paso 1: pedir permiso con baja resolución para evitar telefoto
+          await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { exact: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              aspectRatio: 16/9
+            }
+          });
+
+          // Paso 2: enumerar cámaras con permiso concedido
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
           console.log('Cámaras detectadas:', videoDevices);
 
-          // Busca cámara gran angular
+          // Buscar gran angular
           const wideCam = videoDevices.find(d => /wide|ultra/i.test(d.label));
-          let arjsConfig = 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;';
+          let arjsConfig;
 
           if (wideCam) {
             console.log('Usando cámara gran angular:', wideCam.label);
             arjsConfig = `sourceType: webcam; deviceId: ${wideCam.deviceId}; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;`;
           } else {
-            console.log('No se detectó cámara gran angular, usando cámara trasera por defecto.');
+            console.log('No se detectó cámara gran angular. Usando trasera con baja resolución.');
+            arjsConfig = 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;';
           }
 
+          // Aplicar configuración a AR.js
           scene.setAttribute('arjs', arjsConfig);
 
         } catch (err) {
           console.error('Error seleccionando cámara:', err);
-          scene.setAttribute('arjs', 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;');
+          // Fallback seguro
+          scene.setAttribute('arjs', 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 640; sourceHeight: 480; displayWidth: 640; displayHeight: 480;');
         }
       }
 
