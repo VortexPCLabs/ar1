@@ -1,131 +1,133 @@
 <!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>AR-video con sonido (fix iOS + proporción + zoom)</title>
+  <head>
+    <meta charset="utf-8" />
+    <title>AR-video con sonido</title>
 
-  <!-- A-Frame + AR.js -->
-  <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <!-- A-Frame + AR.js -->
+    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
-  <!-- Gestos pinch / rotate -->
-  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+    <!-- Gestos pinch / rotate -->
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-  <script>
-    /* 🔹 Forzar cámara trasera normal sin zoom */
-    const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = (constraints) => {
-      if (constraints.video) {
-        constraints.video = {
-          facingMode: { ideal: "environment" }, // cámara trasera normal
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          aspectRatio: { ideal: 4/3 }
-        };
-      }
-      return origGetUserMedia(constraints);
-    };
+    <!-- Forzar cámara trasera sin zoom -->
+    <script>
+      const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = (constraints) => {
+        if (constraints.video) {
+          constraints.video = {
+            facingMode: { ideal: "environment" }, // cámara trasera
+            width: { min: 640, ideal: 1280, max: 1920 },
+            height: { min: 480, ideal: 720, max: 1080 },
+            aspectRatio: { ideal: 4/3 }
+          };
+        }
+        return origGetUserMedia(constraints);
+      };
+    </script>
 
-    /* 🔹 Componente para manejar video y audio */
-    AFRAME.registerComponent('videohandler', {
-      init () {
-        const marker  = this.el;
-        const vid     = document.querySelector('#vid');
-        const overlay = document.getElementById('overlay');
-        let tapDone   = false;
-        let markerOn  = false;
+    <!-- Componente vídeo -->
+    <script>
+      AFRAME.registerComponent('videohandler', {
+        init () {
+          const marker  = this.el;
+          const vid     = document.querySelector('#vid');
+          const overlay = document.getElementById('overlay');
+          let tapDone   = false;
+          let markerOn  = false;
 
-        // Arrancar muted para evitar cuadro negro en iOS
-        vid.muted = true;
-        vid.play().catch(() => {});
+          const unlock = () => {
+            tapDone = true;
+            overlay.style.display = 'none';
+            tryPlay();
+            window.removeEventListener('click',  unlock);
+            window.removeEventListener('touchend', unlock);
+          };
 
-        const unlock = () => {
-          tapDone = true;
-          overlay.style.display = 'none';
-          if (markerOn) {
-            vid.muted = false;
-            vid.play().catch(()=>{});
+          window.addEventListener('click',  unlock);
+          window.addEventListener('touchend', unlock);
+
+          marker.addEventListener('markerFound', () => {
+            markerOn = true;
+            tryPlay();
+          });
+
+          marker.addEventListener('markerLost', () => {
+            markerOn = false;
+            vid.pause();
+          });
+
+          function tryPlay () {
+            if (tapDone && markerOn) {
+              vid.muted = false;
+              vid.play().catch(() => {});
+            }
           }
-          window.removeEventListener('click', unlock);
-          window.removeEventListener('touchend', unlock);
-        };
+        }
+      });
+    </script>
 
-        window.addEventListener('click', unlock);
-        window.addEventListener('touchend', unlock);
-
-        marker.addEventListener('markerFound', () => {
-          markerOn = true;
-          if (tapDone) {
-            vid.muted = false;
-            vid.play().catch(()=>{});
-          }
-        });
-
-        marker.addEventListener('markerLost', () => {
-          markerOn = false;
-          vid.pause();
-        });
+    <style>
+      #overlay {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: transparent;
+        color: #fff; font-family: sans-serif; font-size: 1.25rem;
+        text-shadow: 0 0 6px #000;
+        z-index: 999; text-align: center; padding: 1rem;
       }
-    });
-  </script>
+    </style>
+  </head>
 
-  <style>
-    #overlay{
-      position:fixed; inset:0;
-      display:flex; align-items:center; justify-content:center;
-      background:transparent;
-      color:#fff; font-family:sans-serif; font-size:1.25rem;
-      text-shadow:0 0 6px #000;
-      z-index:999; text-align:center; padding:1rem;
-    }
-  </style>
-</head>
+  <body style="margin:0; overflow:hidden;">
+    <!-- Overlay -->
+    <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
 
-<body style="margin:0; overflow:hidden;">
-  <!-- Overlay para activar audio -->
-  <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
+    <!-- Escena -->
+    <a-scene
+      vr-mode-ui="enabled:false"
+      loading-screen="enabled:false"
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled:false"
+      embedded
+      gesture-detector
+      id="scene">
 
-  <!-- Escena -->
-  <a-scene
-    vr-mode-ui="enabled:false"
-    loading-screen="enabled:false"
-    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
-    embedded
-    gesture-detector>
+      <a-assets>
+        <video id="vid"
+               src="assets/asset.mp4"
+               preload="auto"
+               loop
+               crossorigin="anonymous"
+               playsinline
+               webkit-playsinline></video>
+      </a-assets>
 
-    <a-assets>
-      <video id="vid"
-             src="assets/asset.mp4"
-             preload="auto"
-             loop
-             crossorigin="anonymous"
-             playsinline
-             webkit-playsinline
-             muted></video>
-    </a-assets>
+      <a-marker type="pattern"
+                preset="custom"
+                url="assets/marker.patt"
+                videohandler
+                smooth="true"
+                smoothCount="10"
+                smoothTolerance="0.01"
+                smoothThreshold="5"
+                raycaster="objects:.clickable"
+                emitevents="true"
+                cursor="fuse:false;rayOrigin:mouse"
+                id="markerA">
 
-    <a-marker type="pattern"
-              preset="custom"
-              url="assets/marker.patt"
-              videohandler
-              smooth="true"
-              smoothCount="10"
-              smoothTolerance="0.01"
-              smoothThreshold="5"
-              emitevents="true">
+        <!-- Mantener proporción correcta del video -->
+        <a-video src="#vid"
+                 width="1.78" height="1"  <!-- 16:9 -->
+                 position="0 0.1 0"
+                 rotation="-90 0 0"
+                 class="clickable"
+                 gesture-handler></a-video>
 
-      <!-- Mantener escala y proporción como en tu código original -->
-      <a-video src="#vid"
-               scale="1 1 1"
-               position="0 0.1 0"
-               rotation="-90 0 0"
-               class="clickable"
-               gesture-handler>
-      </a-video>
-    </a-marker>
+      </a-marker>
 
-    <a-entity camera></a-entity>
-  </a-scene>
-</body>
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
 </html>
