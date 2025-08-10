@@ -15,120 +15,63 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
     
     <script>
-      // Override más agresivo de getUserMedia para forzar gran angular
-      (function() {
-        const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
-        
-        navigator.mediaDevices.getUserMedia = function(constraints) {
-          // Debug en pantalla
-          const debugEl = document.getElementById('debug-text');
-          
-          if (constraints && constraints.video) {
-            // Configuración muy específica para evitar telefoto
-            const videoConstraints = {
-              facingMode: { exact: "environment" },
-              width: { ideal: 480, max: 640 },  // Más bajo para forzar gran angular
-              height: { ideal: 360, max: 480 },
-              frameRate: { ideal: 30, max: 30 }
-            };
-            
-            constraints.video = videoConstraints;
-            
-            if (debugEl) {
-              debugEl.innerHTML = `Cámara solicitada:<br>Width: ${videoConstraints.width.ideal}<br>Height: ${videoConstraints.height.ideal}<br>FacingMode: environment`;
-            }
-          }
-          
-          return originalGetUserMedia.call(this, constraints).then(stream => {
-            // Obtener info real de la cámara
-            const videoTrack = stream.getVideoTracks()[0];
-            const settings = videoTrack.getSettings();
-            
-            if (debugEl) {
-              debugEl.innerHTML += `<br><br>Cámara obtenida:<br>Width: ${settings.width}<br>Height: ${settings.height}<br>FacingMode: ${settings.facingMode}`;
-            }
-            
-            return stream;
-          });
-        };
-      })();
-
-      // Componente para posicionamiento con múltiples opciones
-      AFRAME.registerComponent('smart-video-position', {
+      // Componente para encontrar la posición correcta mediante prueba automática
+      AFRAME.registerComponent('position-finder', {
         init: function() {
-          const userAgent = navigator.userAgent;
-          const isIOS = /iPad|iPhone|iPod/.test(userAgent);
-          const isSamsung = /SM-|Galaxy/.test(userAgent);
-          const isXiaomi = /Xiaomi|Redmi|Mi |MIUI/.test(userAgent);
+          this.marker = this.el.parentEl;
+          this.currentIndex = 0;
+          this.testingActive = false;
           
-          const debugEl = document.getElementById('debug-text');
-          const debugInfo = document.getElementById('debug-info');
-          
-          // Mostrar debug info
-          if (debugInfo) {
-            debugInfo.style.display = 'block';
-          }
-          
-          // Probar múltiples posiciones para encontrar la correcta
-          const positions = [
-            { pos: "0 0.1 0", desc: "Original Xiaomi" },
-            { pos: "0 0 0", desc: "Centrado" },
-            { pos: "0 0.05 0", desc: "Ligeramente elevado" },
-            { pos: "0 -0.1 0", desc: "Más abajo" },
-            { pos: "0 0.2 0", desc: "Más arriba" }
+          // Array de posiciones para probar (más extremas)
+          this.positions = [
+            "0 0 0",      // Centro
+            "0 0.1 0",    // Ligeramente arriba (original Xiaomi)
+            "0 -0.1 0",   // Abajo
+            "0 0.2 0",    // Más arriba
+            "0 -0.2 0",   // Más abajo
+            "0 0.5 0",    // Muy arriba
+            "0 -0.5 0",   // Muy abajo
+            "0.2 0 0",    // Derecha
+            "-0.2 0 0",   // Izquierda
+            "0 0 0.2",    // Adelante
+            "0 0 -0.2"    // Atrás
           ];
           
-          let selectedPosition = positions[0]; // Default
+          // Empezar con posición centro
+          this.el.setAttribute('position', this.positions[0]);
           
-          if (isIOS) {
-            selectedPosition = positions[1]; // Centrado para iOS
-          } else if (isSamsung) {
-            selectedPosition = positions[1]; // Centrado para Samsung
-          } else if (isXiaomi) {
-            selectedPosition = positions[0]; // Original para Xiaomi
-          }
-          
-          // Aplicar posición inicial
-          this.el.setAttribute('position', selectedPosition.pos);
-          
-          // Debug info actualizada
-          if (debugEl) {
-            debugEl.innerHTML += `<br><br>Dispositivo: ${isIOS ? 'iOS' : isSamsung ? 'Samsung' : isXiaomi ? 'Xiaomi' : 'Android'}<br>Posición: ${selectedPosition.desc}<br>Coords: ${selectedPosition.pos}`;
-          }
-          
-          // Cambiar posición cada 3 segundos para encontrar la correcta (solo para testing)
-          let currentIndex = positions.findIndex(p => p.pos === selectedPosition.pos);
-          let testingActive = false;
-          
-          // Función para probar siguiente posición
-          window.testNextPosition = () => {
-            if (!testingActive) {
-              testingActive = true;
-              const interval = setInterval(() => {
-                currentIndex = (currentIndex + 1) % positions.length;
-                const newPos = positions[currentIndex];
-                this.el.setAttribute('position', newPos.pos);
-                
-                if (debugEl) {
-                  debugEl.innerHTML = debugEl.innerHTML.replace(/Posición:.*/, `Posición: ${newPos.desc}<br>Coords: ${newPos.pos}<br><br>🔄 Probando posiciones automáticamente...`);
-                }
-                
-                if (currentIndex === 0) {
-                  clearInterval(interval);
-                  testingActive = false;
-                  if (debugEl) {
-                    debugEl.innerHTML += '<br>✅ Ciclo completado';
-                  }
-                }
-              }, 2000);
+          // Auto-cambio cada 3 segundos cuando detecte marker
+          this.marker.addEventListener('markerFound', () => {
+            if (!this.testingActive) {
+              this.startTesting();
             }
-          };
+          });
           
-          console.log('Para probar todas las posiciones, ejecuta: testNextPosition()');
+          this.marker.addEventListener('markerLost', () => {
+            this.stopTesting();
+          });
+        },
+        
+        startTesting: function() {
+          this.testingActive = true;
+          this.testInterval = setInterval(() => {
+            this.currentIndex = (this.currentIndex + 1) % this.positions.length;
+            this.el.setAttribute('position', this.positions[this.currentIndex]);
+            
+            // Log para identificar qué posición funciona
+            console.log(`Probando posición ${this.currentIndex}: ${this.positions[this.currentIndex]}`);
+          }, 3000); // Cambiar cada 3 segundos
+        },
+        
+        stopTesting: function() {
+          if (this.testInterval) {
+            clearInterval(this.testInterval);
+            this.testingActive = false;
+          }
         }
       });
 
-      // Componente de video mejorado
+      // Componente de video simplificado
       AFRAME.registerComponent('videohandler', {
         init () {
           const marker  = this.el;
@@ -137,11 +80,9 @@
           let tapDone   = false;
           let markerOn  = false;
           
-          // Detectar iOS
           const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-          /* ---- Configuración específica para iOS ---- */
           if (isIOS) {
             vid.setAttribute('muted', 'true');
             vid.setAttribute('playsinline', 'true');
@@ -150,7 +91,6 @@
             vid.load();
           }
 
-          /* ---- Primer tap: desbloquea audio ---- */
           const unlock = async () => {
             tapDone = true;
             overlay.style.display = 'none';
@@ -179,23 +119,18 @@
           window.addEventListener('click',  unlock);
           window.addEventListener('touchend', unlock);
 
-          /* ---- Marca encontrada / perdida ---- */
           marker.addEventListener('markerFound', () => {
             markerOn = true;
-            console.log('Marker encontrado - intentando reproducir video');
             tryPlay();
           });
           
           marker.addEventListener('markerLost', () => {
             markerOn = false;
-            console.log('Marker perdido - pausando video');
             vid.pause();
           });
 
-          /* ---- Reproducir sólo si tap + marca ---- */
           async function tryPlay () {
             if (tapDone && markerOn) {
-              console.log('Condiciones cumplidas - reproduciendo video');
               try {
                 if (isIOS) {
                   if (vid.readyState >= 2) {
@@ -219,28 +154,6 @@
               }
             }
           }
-        }
-      });
-
-      // Componente para debugging visual del video
-      AFRAME.registerComponent('video-debug', {
-        init: function() {
-          const videoEl = this.el;
-          
-          // Log cuando el video cambie de estado
-          const vid = document.querySelector('#vid');
-          if (vid) {
-            vid.addEventListener('loadeddata', () => {
-              console.log('Video cargado:', vid.videoWidth, 'x', vid.videoHeight);
-            });
-            
-            vid.addEventListener('play', () => {
-              console.log('Video reproduciendo - posición del elemento:', videoEl.getAttribute('position'));
-            });
-          }
-          
-          // Hacer el video visible para debugging (opcional)
-          videoEl.setAttribute('material', 'side: double; transparent: false');
         }
       });
     </script>
@@ -286,20 +199,15 @@
     <div id="overlay">
       <div>
         <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.8;">Apunta la cámara hacia el marcador</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">El video cambiará de posición cada 3 segundos para encontrar la correcta</p>
       </div>
     </div>
     
-    <!-- Debug info en pantalla -->
-    <div id="debug-info" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; z-index: 1000; max-width: 300px; display: none;">
-      <div id="debug-text">Cargando...</div>
-    </div>
-    
-    <!-- Escena AR con resolución más baja para evitar telefoto -->
+    <!-- Intentar diferentes configuraciones de AR.js -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false;sourceWidth:480;sourceHeight:360"
+      arjs="sourceType:webcam;debugUIEnabled:false;trackingMethod:best"
       embedded
       gesture-detector
       id="scene">
@@ -328,11 +236,13 @@
                 cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
         
-        <!-- Video con posicionamiento y debugging mejorados -->
+        <!-- Video con buscador automático de posición -->
         <a-video src="#vid"
-                 scale="1 1 1"
-                 smart-video-position
-                 video-debug
+                 width="1.5"
+                 height="1"
+                 position-finder
+                 rotation="-90 0 0"
+                 material="side: double"
                  class="clickable"
                  gesture-handler></a-video>
       </a-marker>
