@@ -15,26 +15,74 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
     
     <script>
-      // Componente simple para posicionamiento específico por dispositivo
-      AFRAME.registerComponent('device-position', {
-        init: function() {
-          // Detectar dispositivos específicos
-          const userAgent = navigator.userAgent;
-          const isSamsung = /SM-|Galaxy/.test(userAgent);
-          
-          // Solo Samsung usa posición diferente
-          let position = "0 0.1 0"; // Posición por defecto que funciona en tu Xiaomi
-          
-          if (isSamsung) {
-            position = "0 0 0"; // Solo para Samsung
+      // Override de getUserMedia para forzar cámara gran angular
+      (function() {
+        const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
+        
+        navigator.mediaDevices.getUserMedia = function(constraints) {
+          // Si se está pidiendo video, modificar constraints para evitar telefoto
+          if (constraints && constraints.video) {
+            const videoConstraints = {
+              facingMode: { exact: "environment" },
+              width: { ideal: 640, max: 1280 },
+              height: { ideal: 480, max: 720 }
+            };
+            
+            // Para dispositivos con múltiples cámaras traseras
+            if (typeof constraints.video === 'object') {
+              constraints.video = {
+                ...constraints.video,
+                ...videoConstraints
+              };
+            } else {
+              constraints.video = videoConstraints;
+            }
+            
+            console.log('Constraints de cámara modificadas:', constraints);
           }
           
+          return originalGetUserMedia.call(this, constraints);
+        };
+      })();
+
+      // Componente para posicionamiento específico por dispositivo
+      AFRAME.registerComponent('smart-video-position', {
+        init: function() {
+          const userAgent = navigator.userAgent;
+          const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+          const isSamsung = /SM-|Galaxy/.test(userAgent);
+          const isXiaomi = /Xiaomi|Redmi|Mi |MIUI/.test(userAgent);
+          
+          let position = "0 0.1 0"; // Posición por defecto (funciona en Xiaomi)
+          let rotation = "-90 0 0"; // Rotación por defecto
+          
+          if (isIOS) {
+            // iPhone necesita posición centrada
+            position = "0 0 0";
+            rotation = "-90 0 0";
+          } else if (isSamsung) {
+            // Samsung usa posición alternativa
+            position = "0 0 0";
+            rotation = "-90 0 0";
+          } else if (isXiaomi) {
+            // Xiaomi mantiene la posición que funcionaba
+            position = "0 0.1 0";
+            rotation = "-90 0 0";
+          }
+          
+          // Aplicar configuración
           this.el.setAttribute('position', position);
-          console.log('Dispositivo Samsung:', isSamsung, 'Posición:', position);
+          this.el.setAttribute('rotation', rotation);
+          
+          console.log('Dispositivo detectado:', {
+            isIOS, isSamsung, isXiaomi,
+            position, rotation,
+            userAgent: userAgent.substring(0, 50) + '...'
+          });
         }
       });
 
-      // Componente de video (manteniendo lo que funcionaba)
+      // Componente de video mejorado
       AFRAME.registerComponent('videohandler', {
         init () {
           const marker  = this.el;
@@ -88,19 +136,20 @@
           /* ---- Marca encontrada / perdida ---- */
           marker.addEventListener('markerFound', () => {
             markerOn = true;
-            console.log('Marker encontrado');
+            console.log('Marker encontrado - intentando reproducir video');
             tryPlay();
           });
           
           marker.addEventListener('markerLost', () => {
             markerOn = false;
-            console.log('Marker perdido');
+            console.log('Marker perdido - pausando video');
             vid.pause();
           });
 
           /* ---- Reproducir sólo si tap + marca ---- */
           async function tryPlay () {
             if (tapDone && markerOn) {
+              console.log('Condiciones cumplidas - reproduciendo video');
               try {
                 if (isIOS) {
                   if (vid.readyState >= 2) {
@@ -126,10 +175,31 @@
           }
         }
       });
+
+      // Componente para debugging visual del video
+      AFRAME.registerComponent('video-debug', {
+        init: function() {
+          const videoEl = this.el;
+          
+          // Log cuando el video cambie de estado
+          const vid = document.querySelector('#vid');
+          if (vid) {
+            vid.addEventListener('loadeddata', () => {
+              console.log('Video cargado:', vid.videoWidth, 'x', vid.videoHeight);
+            });
+            
+            vid.addEventListener('play', () => {
+              console.log('Video reproduciendo - posición del elemento:', videoEl.getAttribute('position'));
+            });
+          }
+          
+          // Hacer el video visible para debugging (opcional)
+          videoEl.setAttribute('material', 'side: double; transparent: false');
+        }
+      });
     </script>
     
     <style>
-      /* Overlay */
       #overlay{
         position: fixed; 
         inset: 0;
@@ -146,7 +216,6 @@
         padding: 1rem;
       }
       
-      /* Estilos básicos sin sobrecomplicar */
       body {
         margin: 0; 
         overflow: hidden;
@@ -156,7 +225,6 @@
         touch-action: manipulation;
       }
       
-      /* Solo prevenir zoom, sin forzar tamaños que puedan romper AR.js */
       html {
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
@@ -169,7 +237,6 @@
     </style>
   </head>
   <body>
-    <!-- Overlay -->
     <div id="overlay">
       <div>
         <p>👆 Toca la pantalla para activar el audio</p>
@@ -177,17 +244,16 @@
       </div>
     </div>
     
-    <!-- Escena AR - Volviendo a configuración más simple -->
+    <!-- Escena AR con configuración de cámara específica -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false"
+      arjs="sourceType:webcam;debugUIEnabled:false;sourceWidth:640;sourceHeight:480"
       embedded
       gesture-detector
       id="scene">
       
       <a-assets>
-        <!-- Video con configuración conservadora -->
         <video id="vid"
                src="assets/asset.mp4"
                preload="auto"
@@ -211,11 +277,11 @@
                 cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
         
-        <!-- Video con posicionamiento inteligente pero simple -->
+        <!-- Video con posicionamiento y debugging mejorados -->
         <a-video src="#vid"
                  scale="1 1 1"
-                 device-position
-                 rotation="-90 0 0"
+                 smart-video-position
+                 video-debug
                  class="clickable"
                  gesture-handler></a-video>
       </a-marker>
