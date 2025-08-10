@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>AR-video con sonido (fix iOS + alineación)</title>
+  <title>AR-video con sonido (fix proporción + zoom)</title>
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
@@ -13,6 +13,17 @@
   <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
   <script>
+    // 🔹 Forzar cámara trasera gran angular sin zoom
+    const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (constraints) => {
+      if (constraints.video) {
+        constraints.video.facingMode = { exact: "environment" };
+        constraints.video.width = { ideal: 1280 };
+        constraints.video.height = { ideal: 720 };
+      }
+      return origGetUserMedia(constraints);
+    };
+
     AFRAME.registerComponent('videohandler', {
       init () {
         const marker  = this.el;
@@ -21,7 +32,7 @@
         let tapDone   = false;
         let markerOn  = false;
 
-        // Iniciar el video muted y reproducirlo para que iOS desbloquee el frame
+        // Arrancar muted para evitar cuadro negro en iOS
         vid.muted = true;
         vid.play().catch(() => {});
 
@@ -98,16 +109,14 @@
               smoothThreshold="5"
               emitevents="true">
 
-      <!-- Envolver el video en un entity para alinear y escalar más consistente -->
-      <a-entity position="0 0 0" rotation="-90 0 0">
-        <a-video src="#vid"
-                 width="1"
-                 height="0.5625"
-                 position="0 0 0"
-                 class="clickable"
-                 gesture-handler>
-        </a-video>
-      </a-entity>
+      <!-- Usamos scale como antes para mantener proporción -->
+      <a-video src="#vid"
+               scale="1 1 1"
+               position="0 0.1 0"
+               rotation="-90 0 0"
+               class="clickable"
+               gesture-handler>
+      </a-video>
     </a-marker>
 
     <a-entity camera></a-entity>
