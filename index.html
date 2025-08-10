@@ -1,200 +1,214 @@
 <!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AR-video (fix definitivo)</title>
+  <head>
+    <meta charset="utf-8" />
+    <title>AR-video con sonido</title>
+    <!-- A-Frame + AR.js -->
+    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <!-- Gestos pinch / rotate -->
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+    <!-- Componente vídeo mejorado -->
+    <script>
+      AFRAME.registerComponent('videohandler', {
+        init () {
+          const marker  = this.el;
+          const vid     = document.querySelector('#vid');
+          const overlay = document.getElementById('overlay');
+          let tapDone   = false;
+          let markerOn  = false;
+          
+          // Detectar iOS
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  <!-- A-Frame: mantén esta línea -->
-  <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+          /* ---- Configuración específica para iOS ---- */
+          if (isIOS) {
+            // Forzar configuración de video para iOS
+            vid.setAttribute('muted', 'true');
+            vid.setAttribute('playsinline', 'true');
+            vid.setAttribute('webkit-playsinline', 'true');
+            vid.muted = true;
+            
+            // Precargar video en iOS
+            vid.load();
+          }
 
-  <!-- ======== OVERRIDE getUserMedia (DEBE ir ANTES de aframe-ar.js) ========
-       - usamos constraints flexibles para evitar zoom tele/ultrawide
-       - si navigator.mediaDevices no existe, dejamos pasar (fallback)
-  -->
-  <script>
-    (function () {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // navegador viejo -> no hacemos override
-        return;
-      }
-      try {
-        const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        navigator.mediaDevices.getUserMedia = (constraints) => {
-          // solo tocar constraints.video si existe
-          if (constraints && constraints.video) {
-            // constraints flexibles: evita elegir telefoto/ultrawide forzado
-            constraints = Object.assign({}, constraints, {
-              video: {
-                facingMode: { ideal: "environment" }, // trasera (ideal)
-                width:  { min: 640,  ideal: 1280, max: 1920 },
-                height: { min: 480,  ideal:  720, max: 1080 },
-                aspectRatio: { ideal: 4/3 } // preferimos 4:3 para evitar recortes
+          /* ---- Primer tap: desbloquea audio ---- */
+          const unlock = async () => {
+            tapDone = true;
+            overlay.style.display = 'none';
+            
+            // Preparar video para reproducción
+            try {
+              if (isIOS) {
+                // En iOS, empezar muted y luego habilitar audio
+                vid.muted = true;
+                await vid.play();
+                // Esperar un poco antes de desmutear
+                setTimeout(() => {
+                  vid.muted = false;
+                }, 100);
+              } else {
+                vid.muted = false;
+                await vid.play();
               }
-            });
-          }
-          return orig(constraints);
-        };
-      } catch (e) {
-        console.warn('No se pudo override getUserMedia:', e);
-      }
-    })();
-  </script>
+              vid.pause(); // Pausar hasta que aparezca el marker
+            } catch (error) {
+              console.log('Error preparando video:', error);
+            }
+            
+            tryPlay();
+            window.removeEventListener('click', unlock);
+            window.removeEventListener('touchend', unlock);
+          };
+          
+          window.addEventListener('click', unlock);
+          window.addEventListener('touchend', unlock);
 
-  <!-- AR.js (usa CDN) -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-
-  <!-- Gestos (mantenerlos si los usas) -->
-  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
-
-  <style>
-    /* overlay para habilitar audio (transparente) */
-    #overlay {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      color: #fff;
-      font-family: system-ui, sans-serif;
-      font-size: 1.1rem;
-      text-shadow: 0 0 6px #000;
-      z-index: 9999;
-      padding: 1rem;
-      text-align: center;
-      pointer-events: auto; /* importante para recibir el tap */
-    }
-
-    /* Ocultar / minimizar cualquier video que NO sea nuestro asset #vid.
-       Lo mantenemos reproducible pero fuera de vista para evitar duplicados.
-       (display:none podría pausar reproducción en algunos navegadores) */
-    video:not(#vid) {
-      position: fixed !important;
-      left: -9999px !important;
-      width: 1px !important;
-      height: 1px !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-    }
-
-    /* Asegurarnos que el video-asset (#vid) no se muestre en la UI */
-    #vid { display: none; } /* lo usaremos como textura en A-Frame */
-  </style>
-
-  <!-- Componente que controla la reproducción del asset video (tap + marker) -->
-  <script>
-    AFRAME.registerComponent('videohandler', {
-      init: function () {
-        const marker = this.el;
-        const vid = document.querySelector('#vid'); // video asset (mp4)
-        const overlay = document.getElementById('overlay');
-        let userTapped = false;
-        let markerOn = false;
-
-        // Aseguramos atributos importantes para iOS
-        vid.setAttribute('playsinline', '');
-        vid.setAttribute('webkit-playsinline', '');
-        vid.muted = true; // arrancamos muted para que iOS muestre frame
-        // no forzamos play aquí (AR.js puede tardar). Intentamos arrancar:
-        vid.play().catch(()=>{ /* ignorar */ });
-
-        // Función para intentar reproducir con condiciones
-        function tryPlay() {
-          if (!userTapped || !markerOn) return;
-          // si está pausado, reintentar reproducir y quitar mute
-          vid.muted = false;
-          // algunos navegadores requieren volver a llamar play después de un gesto
-          vid.play().catch((e) => {
-            console.warn('No se pudo reproducir video asset:', e);
+          /* ---- Marca encontrada / perdida ---- */
+          marker.addEventListener('markerFound', () => {
+            markerOn = true;
+            console.log('Marker encontrado');
+            tryPlay();
           });
-        }
+          
+          marker.addEventListener('markerLost', () => {
+            markerOn = false;
+            console.log('Marker perdido');
+            vid.pause();
+          });
 
-        // EVENTOS: tap / touch en overlay -> desbloquear audio
-        function unlockHandler(e) {
-          e && e.preventDefault && e.preventDefault();
-          userTapped = true;
-          overlay.style.display = 'none';
-          tryPlay();
-          window.removeEventListener('click', unlockHandler);
-          window.removeEventListener('touchend', unlockHandler);
-        }
-        window.addEventListener('click', unlockHandler, { passive: false });
-        window.addEventListener('touchend', unlockHandler, { passive: false });
-
-        // Marca encontrada / perdida
-        marker.addEventListener('markerFound', () => {
-          markerOn = true;
-          tryPlay();
-        });
-        marker.addEventListener('markerLost', () => {
-          markerOn = false;
-          // pausamos para ahorrar CPU / batería
-          try { vid.pause(); } catch(e) {}
-        });
-
-        // debugging leve: si AR.js no entrega source, avisar (no exponer en UI)
-        setTimeout(()=> {
-          // si después de 6s no hay ningún video (cámara), mostrar info en consola
-          const camVideo = Array.from(document.querySelectorAll('video')).find(v => v !== vid);
-          if (!camVideo || (camVideo && camVideo.readyState < 2)) {
-            console.warn('AVISO: el stream de la cámara aún no está listo. Asegúrate de usar HTTPS y permitir cámara. Si Safari, prueba tocar la pantalla para activar.');
+          /* ---- Reproducir según estado ---- */
+          async function tryPlay() {
+            if (tapDone && markerOn) {
+              try {
+                if (isIOS) {
+                  // En iOS, asegurar que el video esté listo
+                  if (vid.readyState >= 2) {
+                    await vid.play();
+                    // Intentar desmutear después de reproducir
+                    setTimeout(() => {
+                      vid.muted = false;
+                    }, 200);
+                  }
+                } else {
+                  vid.muted = false;
+                  await vid.play();
+                }
+              } catch (error) {
+                console.log('Error reproduciendo:', error);
+                // Fallback: reproducir muted
+                try {
+                  vid.muted = true;
+                  await vid.play();
+                } catch (e) {
+                  console.log('Error en fallback:', e);
+                }
+              }
+            }
           }
-        }, 6000);
+        }
+      });
+    </script>
+    <style>
+      /* Overlay mejorado */
+      #overlay{
+        position: fixed; 
+        inset: 0;
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.7);
+        color: #fff; 
+        font-family: sans-serif; 
+        font-size: 1.25rem;
+        text-shadow: 0 0 6px #000;
+        z-index: 999; 
+        text-align: center; 
+        padding: 1rem;
       }
-    });
-  </script>
-
-</head>
-<body style="margin:0; overflow:hidden;">
-
-  <!-- overlay para desbloquear audio (transparente) -->
-  <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
-
-  <!-- ESCENA A-FRAME + AR.js -->
-  <a-scene
-    vr-mode-ui="enabled:false"
-    loading-screen="enabled:false"
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    embedded
-    gesture-detector>
-
-    <a-assets>
-      <!-- video asset: debe existir en assets/asset.mp4 o cambia la URL -->
-      <video id="vid"
-             src="assets/asset.mp4"
-             preload="auto"
-             loop
-             crossorigin="anonymous"
-             playsinline
-             webkit-playsinline></video>
-    </a-assets>
-
-    <!-- marque rpatrón -->
-    <a-marker type="pattern"
-              url="assets/marker.patt"
-              preset="custom"
-              videohandler
-              smooth="true"
-              smoothCount="10"
-              smoothTolerance="0.01"
-              smoothThreshold="5"
-              emitevents="true">
-
-      <!-- Mantener la proporción a través de scale; no poner comentarios dentro -->
-      <!-- Si tu video es 16:9, scale '1 1 1' suele estar bien. Ajusta si es necesario. -->
-      <a-video src="#vid"
-               scale="1 1 1"
-               position="0 0.1 0"
-               rotation="-90 0 0"
-               class="clickable"
-               gesture-handler>
-      </a-video>
-
-    </a-marker>
-
-    <a-entity camera></a-entity>
-  </a-scene>
-</body>
+      
+      /* Asegurar que el canvas de A-Frame ocupe toda la pantalla */
+      a-scene {
+        height: 100vh;
+        width: 100vw;
+      }
+      
+      /* Prevenir zoom en iOS */
+      body {
+        margin: 0; 
+        overflow: hidden;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Overlay -->
+    <div id="overlay">
+      <div>
+        <p>👆 Toca la pantalla para activar el audio</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">Apunta la cámara hacia el marcador</p>
+      </div>
+    </div>
+    
+    <!-- Escena AR -->
+    <a-scene
+      vr-mode-ui="enabled:false"
+      loading-screen="enabled:false"
+      arjs="sourceType:webcam;debugUIEnabled:false;trackingMethod:best"
+      embedded
+      gesture-detector
+      renderer="logarithmicDepthBuffer:true;precision:medium"
+      id="scene">
+      
+      <a-assets>
+        <!-- Video configurado para máxima compatibilidad -->
+        <video id="vid"
+               src="assets/asset.mp4"
+               preload="metadata"
+               loop
+               muted
+               playsinline
+               webkit-playsinline
+               crossorigin="anonymous"
+               style="display:none"></video>
+      </a-assets>
+      
+      <!-- Marker con configuración optimizada -->
+      <a-marker type="pattern"
+                preset="custom"
+                url="assets/marker.patt"
+                videohandler
+                smooth="true"
+                smoothCount="10"
+                smoothTolerance="0.01"
+                smoothThreshold="5"
+                raycaster="objects:.clickable"
+                emitevents="true"
+                cursor="fuse:false;rayOrigin:mouse"
+                id="markerA">
+        
+        <!-- Video con posicionamiento mejorado -->
+        <a-video src="#vid"
+                 width="2"
+                 height="1.5"
+                 position="0 0 0"
+                 rotation="-90 0 0"
+                 material="shader:flat"
+                 geometry="primitive:plane"
+                 class="clickable"
+                 gesture-handler></a-video>
+      </a-marker>
+      
+      <!-- Cámara con configuración específica -->
+      <a-entity camera
+                look-controls="enabled:false"
+                cursor="rayOrigin:mouse"></a-entity>
+    </a-scene>
+  </body>
 </html>
