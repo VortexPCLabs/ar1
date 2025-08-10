@@ -1,119 +1,116 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <title>AR-video con sonido</title>
+<head>
+  <meta charset="utf-8" />
+  <title>AR-video con sonido (fix iOS + alineación)</title>
 
-    <!-- A-Frame + AR.js -->
-    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- A-Frame + AR.js -->
+  <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
-    <!-- Gestos pinch / rotate -->
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+  <!-- Gestos pinch / rotate -->
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <!-- Componente vídeo -->
-    <script>
-      AFRAME.registerComponent('videohandler', {
-        init () {
-          const marker  = this.el;
-          const vid     = document.querySelector('#vid');
-          const overlay = document.getElementById('overlay');
+  <script>
+    AFRAME.registerComponent('videohandler', {
+      init () {
+        const marker  = this.el;
+        const vid     = document.querySelector('#vid');
+        const overlay = document.getElementById('overlay');
+        let tapDone   = false;
+        let markerOn  = false;
 
-          let tapDone   = false;   // ¿el usuario ya tocó?
-          let markerOn  = false;   // ¿la marca está visible?
+        // Iniciar el video muted y reproducirlo para que iOS desbloquee el frame
+        vid.muted = true;
+        vid.play().catch(() => {});
 
-          /* ---- 1) Primer tap: desbloquea audio ---- */
-          const unlock = () => {
-            tapDone = true;
-            overlay.style.display = 'none';
-            tryPlay();
-            window.removeEventListener('click',  unlock);
-            window.removeEventListener('touchend', unlock);
-          };
-          window.addEventListener('click',  unlock);
-          window.addEventListener('touchend', unlock);
-
-          /* ---- 2) Marca encontrada / perdida ---- */
-          marker.addEventListener('markerFound', () => {
-            markerOn = true;
-            tryPlay();
-          });
-          marker.addEventListener('markerLost', () => {
-            markerOn = false;
-            vid.pause();
-          });
-
-          /* ---- 3) Reproducir sólo si tap + marca ---- */
-          function tryPlay () {
-            if (tapDone && markerOn) {
-              vid.muted = false;              // asegurarse de que suene
-              vid.play().catch(() => {});     // ignora bloqueos extra
-            }
+        const unlock = () => {
+          tapDone = true;
+          overlay.style.display = 'none';
+          if (markerOn) {
+            vid.muted = false;
+            vid.play().catch(()=>{});
           }
-        }
-      });
-    </script>
+          window.removeEventListener('click', unlock);
+          window.removeEventListener('touchend', unlock);
+        };
 
-    <style>
-      /* Overlay “Toca para activar audio” — ahora transparente  */
-      #overlay{
-        position:fixed; inset:0;
-        display:flex; align-items:center; justify-content:center;
-        background:transparent;               /* ← sin gris */
-        color:#fff; font-family:sans-serif; font-size:1.25rem;
-        text-shadow:0 0 6px #000;             /* para que se lea sobre cámara */
-        z-index:999; text-align:center; padding:1rem;
+        window.addEventListener('click', unlock);
+        window.addEventListener('touchend', unlock);
+
+        marker.addEventListener('markerFound', () => {
+          markerOn = true;
+          if (tapDone) {
+            vid.muted = false;
+            vid.play().catch(()=>{});
+          }
+        });
+
+        marker.addEventListener('markerLost', () => {
+          markerOn = false;
+          vid.pause();
+        });
       }
-    </style>
-  </head>
+    });
+  </script>
 
-  <body style="margin:0; overflow:hidden;">
-    <!-- Overlay -->
-    <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
+  <style>
+    #overlay{
+      position:fixed; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:transparent;
+      color:#fff; font-family:sans-serif; font-size:1.25rem;
+      text-shadow:0 0 6px #000;
+      z-index:999; text-align:center; padding:1rem;
+    }
+  </style>
+</head>
 
-    <!-- Escena -->
-    <a-scene
-      vr-mode-ui="enabled:false"
-      loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false"
-      embedded
-      gesture-detector
-      id="scene">
+<body style="margin:0; overflow:hidden;">
+  <div id="overlay">Toca la pantalla para activar el audio ▶️</div>
 
-      <a-assets>
-        <!-- sin muted / sin autoplay -->
-        <video id="vid"
-               src="assets/asset.mp4"
-               preload="auto"
-               loop
-               crossorigin="anonymous"
-               playsinline
-               webkit-playsinline></video>
-      </a-assets>
+  <a-scene
+    vr-mode-ui="enabled:false"
+    loading-screen="enabled:false"
+    arjs="sourceType:webcam;debugUIEnabled:false"
+    embedded
+    gesture-detector>
 
-      <a-marker type="pattern"
-                preset="custom"
-                url="assets/marker.patt"
-                videohandler
-                smooth="true"
-                smoothCount="10"
-                smoothTolerance="0.01"
-                smoothThreshold="5"
-                raycaster="objects:.clickable"
-                emitevents="true"
-                cursor="fuse:false;rayOrigin:mouse"
-                id="markerA">
+    <a-assets>
+      <video id="vid"
+             src="assets/asset.mp4"
+             preload="auto"
+             loop
+             crossorigin="anonymous"
+             playsinline
+             webkit-playsinline
+             muted></video>
+    </a-assets>
 
+    <a-marker type="pattern"
+              preset="custom"
+              url="assets/marker.patt"
+              videohandler
+              smooth="true"
+              smoothCount="10"
+              smoothTolerance="0.01"
+              smoothThreshold="5"
+              emitevents="true">
+
+      <!-- Envolver el video en un entity para alinear y escalar más consistente -->
+      <a-entity position="0 0 0" rotation="-90 0 0">
         <a-video src="#vid"
-                 scale="1 1 1"
-                 position="0 0.1 0"
-                 rotation="-90 0 0"
+                 width="1"
+                 height="0.5625"
+                 position="0 0 0"
                  class="clickable"
-                 gesture-handler></a-video>
-      </a-marker>
+                 gesture-handler>
+        </a-video>
+      </a-entity>
+    </a-marker>
 
-      <a-entity camera></a-entity>
-    </a-scene>
-  </body>
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
 </html>
