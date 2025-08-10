@@ -1,166 +1,51 @@
-<!doctype html>
-<html lang="es">
+<!DOCTYPE html>
+<html>
   <head>
-    <meta charset="utf-8" />
-    <title>AR-video con sonido - calibración</title>
-
-    <!-- A-Frame + AR.js (versiones compatibles con tu base) -->
-    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-
-    <!-- Gestos pinch / rotate (como en tu base original) -->
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
-
+    <meta charset="utf-8">
+    <title>AR Video Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/2.2.1/aframe/build/aframe-ar.js"></script>
     <style>
-      /* Overlay "Toca para activar audio" */
-      #overlay{
-        position:fixed; inset:0;
-        display:flex; align-items:center; justify-content:center;
-        background:transparent;
-        color:#fff; font-family:sans-serif; font-size:1.25rem;
-        text-shadow:0 0 6px #000;
-        z-index:999; text-align:center; padding:1rem;
-        pointer-events:auto;
+      body, html {
+        margin: 0;
+        overflow: hidden;
+        height: 100%;
+        background: black;
+      }
+      #overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        text-align: center;
+        z-index: 10;
+        cursor: pointer;
       }
     </style>
-
-    <!--
-      selectCameraAndStart:
-      - pide permiso con baja resolución (evita telefoto y zoom digital)
-      - enumera cámaras y busca nombre "wide" / "ultra"
-      - si encuentra wide, pide stream con ese deviceId y lo asigna al arToolkitSource.domElement (si AR.js ya creó el video)
-      - logs para diagnóstico
-    -->
-    <script>
-      // Espera que AR.js cree arToolkitSource y su domElement (video)
-      function waitForArToolkitSource(timeoutMs = 10000) {
-        const scene = document.getElementById('scene');
-        return new Promise((resolve, reject) => {
-          let waited = 0;
-          const step = 200;
-          const check = () => {
-            if (scene && scene.systems && scene.systems.arjs && scene.systems.arjs.arToolkitSource && scene.systems.arjs.arToolkitSource.domElement) {
-              resolve(scene.systems.arjs.arToolkitSource);
-            } else {
-              waited += step;
-              if (waited >= timeoutMs) reject(new Error('arToolkitSource no listo (timeout)'));
-              else setTimeout(check, step);
-            }
-          };
-          check();
-        });
-      }
-
-      async function selectCameraAndStart() {
-        const scene = document.getElementById('scene');
-        if (!scene) return;
-        try {
-          console.log('[camera-select] pidiendo permiso con baja resolución (ideal environment)');
-          // Pedimos permiso con baja resolución primero para evitar que el sistema seleccione telefoto
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 640 },   // baja resolución preferida inicialmente
-              height: { ideal: 480 },
-              aspectRatio: 16/9
-            }
-          });
-
-          // Ahora que hay permiso, enumeramos cámaras
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(d => d.kind === 'videoinput' && d.deviceId);
-          console.log('[camera-select] cámaras encontradas:', videoDevices.map(v=>v.label || v.deviceId));
-
-          // Busca nombre que sugiera gran angular
-          const wideCam = videoDevices.find(d => /wide|ultra|ultrawide|widelens/i.test(d.label));
-          if (!wideCam) {
-            console.log('[camera-select] no se detectó cámara con "wide" en el label, usaremos cámara trasera por defecto (baja resolución pedida).');
-            return;
-          }
-
-          console.log('[camera-select] intentaremos usar wide camera:', wideCam.label || wideCam.deviceId);
-
-          // Pedir stream explícito de esa cámara (mayor resolución)
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              deviceId: { exact: wideCam.deviceId },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              aspectRatio: 16/9
-            }
-          });
-
-          // Esperamos que AR.js haya creado su elemento <video> para la cámara
-          try {
-            const arSource = await waitForArToolkitSource(8000);
-            // asignamos el stream al elemento de AR.js
-            // Nota: arSource.domElement es el <video> que AR.js usa internamente.
-            arSource.domElement.srcObject = stream;
-            // forzamos reproducción
-            arSource.domElement.play().catch(e => console.warn('[camera-select] play() falló:', e));
-            console.log('[camera-select] stream wide asignado al arToolkitSource');
-          } catch (err) {
-            console.warn('[camera-select] arToolkitSource no listo para asignar stream: ', err);
-          }
-        } catch (err) {
-          console.warn('[camera-select] fallo al pedir permiso o asignar cámara:', err);
-          // No hacemos nada: AR.js seguirá con la cámara por defecto
-        }
-      }
-
-      // iniciar intento
-      window.addEventListener('load', () => {
-        // ejecutamos sin bloquear: la calibración posterior se encargará de alinear el video
-        selectCameraAndStart().catch(e => console.warn(e));
-      });
-    </script>
   </head>
+  <body>
+    <div id="overlay">Toca para iniciar</div>
 
-  <body style="margin:0; overflow:hidden;">
-    <!-- Overlay -->
-    <div id="overlay">
-      <div>
-        <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.9;">Si es necesario reduce el zoom de tu cámara. Apunta hacia el marcador.</p>
-      </div>
-    </div>
-
-    <!-- Escena: incluimos arjs con valores por defecto; luego el script intentará reemplazar stream si encuentra wide -->
     <a-scene
-      id="scene"
-      vr-mode-ui="enabled:false"
-      loading-screen="enabled:false"
       embedded
-      gesture-detector
-      arjs="sourceType: webcam; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;">
-
+      vr-mode-ui="enabled: false"
+      renderer="logarithmicDepthBuffer: true;"
+      arjs="sourceType: webcam; debugUIEnabled: false;">
+      
+      <!-- Video -->
       <a-assets>
-        <video id="vid"
-               src="assets/asset.mp4"
-               preload="auto"
-               loop
-               crossorigin="anonymous"
-               playsinline
-               webkit-playsinline></video>
+        <video id="vid" src="video.mp4" preload="auto" crossorigin="anonymous" webkit-playsinline playsinline></video>
       </a-assets>
 
-      <!-- Marcador y handler -->
-      <a-marker type="pattern"
-                preset="custom"
-                url="assets/marker.patt"
-                id="markerA"
-                videohandler
-                smooth="true"
-                smoothCount="10"
-                smoothTolerance="0.01"
-                smoothThreshold="5"
-                raycaster="objects:.clickable"
-                emitevents="true"
-                cursor="fuse:false;rayOrigin:mouse">
-
+      <!-- Marcador con video encima -->
+      <a-marker type="pattern" url="marker.patt" videohandler>
         <a-video src="#vid"
-                 id="videoPlane"
                  scale="1 1 1"
                  position="0 0 0"
                  rotation="-90 0 0"
@@ -171,183 +56,75 @@
       <a-entity camera></a-entity>
     </a-scene>
 
-    <!-- Componente videohandler: reproduce, y calibra proyección + recentra el a-video -->
     <script>
       AFRAME.registerComponent('videohandler', {
-        init: function () {
-          const marker = this.el;                    // <a-marker>
-          const vidEl = document.getElementById('vid'); // video asset que reproduces como textura
+        init () {
+          const marker  = this.el;
+          const vid     = document.querySelector('#vid');
           const overlay = document.getElementById('overlay');
-          const scene = document.getElementById('scene');
-          const videoPlaneSelector = '#videoPlane';
-          let tapDone = false;
-          let markerOn = false;
+          const videoEl = marker.querySelector('a-video');
+          let tapDone   = false;
+          let markerOn  = false;
+          let calibrado = false;
 
-          // iOS tweaks (para evitar cuadro negro / autoplay)
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
           if (isIOS) {
-            vidEl.setAttribute('muted', 'true');
-            vidEl.setAttribute('playsinline', 'true');
-            vidEl.setAttribute('webkit-playsinline', 'true');
-            vidEl.muted = true;
-            vidEl.load();
+            vid.setAttribute('muted', 'true');
+            vid.setAttribute('playsinline', 'true');
+            vid.setAttribute('webkit-playsinline', 'true');
+            vid.muted = true;
+            vid.load();
           }
 
-          // Unlock audio on first tap
           const unlock = () => {
             tapDone = true;
-            if (overlay) overlay.style.display = 'none';
+            overlay.style.display = 'none';
             tryPlay();
-            window.removeEventListener('click', unlock);
+            window.removeEventListener('click',  unlock);
             window.removeEventListener('touchend', unlock);
           };
-          window.addEventListener('click', unlock);
+          window.addEventListener('click',  unlock);
           window.addEventListener('touchend', unlock);
 
-          // Espera que AR.js cree arToolkitSource y su <video> (la cámara)
-          const waitForArToolkitSource = (timeoutMs = 10000) => {
-            return new Promise((resolve, reject) => {
-              let waited = 0;
-              const step = 200;
-              const check = () => {
-                if (scene && scene.systems && scene.systems.arjs && scene.systems.arjs.arToolkitSource && scene.systems.arjs.arToolkitSource.domElement) {
-                  resolve(scene.systems.arjs.arToolkitSource);
-                } else {
-                  waited += step;
-                  if (waited >= timeoutMs) reject(new Error('arToolkitSource no listo'));
-                  else setTimeout(check, step);
-                }
-              };
-              check();
-            });
-          };
-
-          // Ajusta la proyección de la cámara three.js para que coincida con el tamaño real del stream de cámara
-          function calibrateProjectionOnce(arSource) {
-            try {
-              const camVideo = arSource.domElement; // <video> del stream de la cámara
-              const vw = camVideo.videoWidth || camVideo.width;
-              const vh = camVideo.videoHeight || camVideo.height;
-              if (vw && vh && scene.camera) {
-                // ajustar aspect y actualizar proyección
-                scene.camera.aspect = vw / vh;
-                scene.camera.updateProjectionMatrix();
-
-                // ajustar tamaño del renderer para que se comporte con la relación del video
-                if (scene.renderer) {
-                  const displayW = window.innerWidth;
-                  const displayH = Math.round(displayW * (vh / vw));
-                  scene.renderer.setSize(displayW, displayH);
-                }
-                console.log('[calibrate] camera aspect actualizado a', (vw/vh).toFixed(3), 'size:', vw, vh);
-              } else {
-                console.log('[calibrate] no hay dimensiones del video de cámara aún', vw, vh);
-              }
-            } catch (e) {
-              console.warn('[calibrate] error:', e);
-            }
-          }
-
-          // Re-centra el video (a-video) dentro del marcador (posición local 0,0,0 y rotación plana)
-          function recenterVideoPlane() {
-            const markerEl = document.getElementById('markerA');
-            if (!markerEl) return;
-            const videoPlane = markerEl.querySelector(videoPlaneSelector);
-            if (!videoPlane) return;
-            // Forzamos la posición/rotación/escala por si el FOV/ASPECT anterior produjo offset visual.
-            videoPlane.setAttribute('position', '0 0 0');
-            videoPlane.setAttribute('rotation', '-90 0 0');
-            // opcional: restablecemos escala a 1 (si tienes transformaciones previas por gestures se mantendrán)
-            //videoPlane.setAttribute('scale', '1 1 1');
-
-            // también actualizamos su matrix3D inmediatamente
-            if (videoPlane.object3D) {
-              videoPlane.object3D.updateMatrixWorld(true);
-            }
-            console.log('[recenter] videoPlane recentrado en marcador');
-          }
-
-          // Calibración completa: intenta varias veces para estabilizar
-          async function runCalibrationAttempts(times = 3, intervalMs = 400) {
-            try {
-              const arSource = await waitForArToolkitSource(8000);
-              for (let i = 0; i < times; i++) {
-                calibrateProjectionOnce(arSource);
-                recenterVideoPlane();
-                await new Promise(r => setTimeout(r, intervalMs));
-              }
-            } catch (err) {
-              console.warn('[runCalibrationAttempts] no se pudo obtener arToolkitSource:', err);
-            }
-          }
-
-          // Reproduce si se ha desbloqueado y el marcador está visible
-          function tryPlay() {
-            if (tapDone && markerOn) {
-              if (isIOS) {
-                vidEl.muted = true;
-                vidEl.play().then(() => {
-                  setTimeout(() => vidEl.muted = false, 100);
-                }).catch(e => console.warn('play iOS:', e));
-              } else {
-                vidEl.muted = false;
-                vidEl.play().catch(e => console.warn('play:', e));
-              }
-            }
-          }
-
-          // Marker events
           marker.addEventListener('markerFound', () => {
             markerOn = true;
             tryPlay();
-            // esperamos un poco y ejecutamos calibraciones repetidas para estabilizar
-            runCalibrationAttempts(4, 400).catch(e => console.warn(e));
+
+            // Calibrar posición tras encontrar el marcador
+            if (!calibrado) {
+              setTimeout(() => {
+                videoEl.setAttribute('position', '0 0 0');
+                videoEl.setAttribute('rotation', '-90 0 0');
+                calibrado = true;
+              }, 500); // medio segundo para que el tracking se estabilice
+            }
           });
 
           marker.addEventListener('markerLost', () => {
             markerOn = false;
-            // pausamos el video cuando se pierde el marcador
-            try { vidEl.pause(); } catch (e) {}
+            vid.pause();
+            calibrado = false;
           });
 
-          // Si el usuario hace interacción táctil (por ejemplo hace zoom out), recalibramos tras finalizar interacción.
-          let touchTimer = null;
-          function scheduleRecalibrationAfterInteraction() {
-            if (touchTimer) clearTimeout(touchTimer);
-            touchTimer = setTimeout(() => {
-              // sólo recalibrar si marcador está visible
-              if (markerOn) runCalibrationAttempts(3, 350).catch(e => console.warn(e));
-            }, 350); // espera corto para que el zoom termine
-          }
-          window.addEventListener('touchend', scheduleRecalibrationAfterInteraction, false);
-          window.addEventListener('mouseup', scheduleRecalibrationAfterInteraction, false);
-
-          // ALSO: cuando la cámara del AR.js carga metadata (dimensiones reales), calibramos inmediatamente
-          waitForArToolkitSource(10000).then(arSource => {
-            // si el video ya tiene metadata, calibramos; si no, atachamos listener.
-            const camVideo = arSource.domElement;
-            if (camVideo && (camVideo.readyState >= 1 || camVideo.videoWidth)) {
-              // ya tenemos dimensiones
-              calibrateProjectionOnce(arSource);
-            } else if (camVideo) {
-              camVideo.addEventListener('loadedmetadata', () => {
-                calibrateProjectionOnce(arSource);
-              });
+          function tryPlay () {
+            if (tapDone && markerOn) {
+              if (isIOS) {
+                vid.muted = true;
+                vid.play().then(() => {
+                  setTimeout(() => {
+                    vid.muted = false;
+                  }, 100);
+                }).catch(() => {});
+              } else {
+                vid.muted = false;
+                vid.play().catch(() => {});
+              }
             }
-          }).catch(err => {
-            console.warn('[videohandler] arToolkitSource no disponible para calibrar automáticamente:', err);
-          });
-
-        } // init end
-      }); // registerComponent end
-    </script>
-
-    <!-- Componente videohandler original (solo se usó el nuevo para reproduccion/calibracion) -->
-    <script>
-      // Mantener la lógica original de desbloqueo + reproducción (ya integrada en videohandler arriba)
-      // (invisible placeholder para mantener coherencia; la funcionalidad se implementó en el componente anterior)
+          }
+        }
+      });
     </script>
   </body>
 </html>
