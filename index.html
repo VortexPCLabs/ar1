@@ -15,63 +15,7 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
     
     <script>
-      // Componente para encontrar la posición correcta mediante prueba automática
-      AFRAME.registerComponent('position-finder', {
-        init: function() {
-          this.marker = this.el.parentEl;
-          this.currentIndex = 0;
-          this.testingActive = false;
-          
-          // Array de posiciones para probar (más extremas)
-          this.positions = [
-            "0 0 0",      // Centro
-            "0 0.1 0",    // Ligeramente arriba (original Xiaomi)
-            "0 -0.1 0",   // Abajo
-            "0 0.2 0",    // Más arriba
-            "0 -0.2 0",   // Más abajo
-            "0 0.5 0",    // Muy arriba
-            "0 -0.5 0",   // Muy abajo
-            "0.2 0 0",    // Derecha
-            "-0.2 0 0",   // Izquierda
-            "0 0 0.2",    // Adelante
-            "0 0 -0.2"    // Atrás
-          ];
-          
-          // Empezar con posición centro
-          this.el.setAttribute('position', this.positions[0]);
-          
-          // Auto-cambio cada 3 segundos cuando detecte marker
-          this.marker.addEventListener('markerFound', () => {
-            if (!this.testingActive) {
-              this.startTesting();
-            }
-          });
-          
-          this.marker.addEventListener('markerLost', () => {
-            this.stopTesting();
-          });
-        },
-        
-        startTesting: function() {
-          this.testingActive = true;
-          this.testInterval = setInterval(() => {
-            this.currentIndex = (this.currentIndex + 1) % this.positions.length;
-            this.el.setAttribute('position', this.positions[this.currentIndex]);
-            
-            // Log para identificar qué posición funciona
-            console.log(`Probando posición ${this.currentIndex}: ${this.positions[this.currentIndex]}`);
-          }, 3000); // Cambiar cada 3 segundos
-        },
-        
-        stopTesting: function() {
-          if (this.testInterval) {
-            clearInterval(this.testInterval);
-            this.testingActive = false;
-          }
-        }
-      });
-
-      // Componente de video simplificado
+      // Componente de video con configuración muy visible
       AFRAME.registerComponent('videohandler', {
         init () {
           const marker  = this.el;
@@ -199,15 +143,15 @@
     <div id="overlay">
       <div>
         <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.8;">El video cambiará de posición cada 3 segundos para encontrar la correcta</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">El video debería ser MUY grande y visible</p>
       </div>
     </div>
     
-    <!-- Intentar diferentes configuraciones de AR.js -->
+    <!-- AR.js con configuración básica -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false;trackingMethod:best"
+      arjs="sourceType:webcam;debugUIEnabled:false"
       embedded
       gesture-detector
       id="scene">
@@ -236,15 +180,36 @@
                 cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
         
-        <!-- Video con buscador automático de posición -->
+        <!-- Video MUY GRANDE para asegurar que sea visible -->
         <a-video src="#vid"
-                 width="1.5"
-                 height="1"
-                 position-finder
+                 width="10"
+                 height="8"
+                 position="0 0 0"
                  rotation="-90 0 0"
-                 material="side: double"
+                 material="side: double; transparent: false; shader: flat"
                  class="clickable"
                  gesture-handler></a-video>
+        
+        <!-- Cubo rojo como referencia visual -->
+        <a-box color="red" 
+               width="0.5" 
+               height="0.5" 
+               depth="0.1"
+               position="0 1 0"
+               material="transparent: false"></a-box>
+        
+        <!-- Esfera azul como segunda referencia -->
+        <a-sphere color="blue" 
+                  radius="0.3"
+                  position="1 0 0"
+                  material="transparent: false"></a-sphere>
+        
+        <!-- Cilindro verde como tercera referencia -->
+        <a-cylinder color="green" 
+                    radius="0.2" 
+                    height="0.5"
+                    position="-1 0 0"
+                    material="transparent: false"></a-cylinder>
       </a-marker>
       
       <a-entity camera></a-entity>
