@@ -12,7 +12,7 @@
     
     <!-- Componente de auto-posicionamiento dinámico -->
     <script>
-      // Componente para ajuste dinámico de posición
+      // Componente para ajuste dinámico de posición mejorado
       AFRAME.registerComponent('smart-position', {
         schema: {
           basePosition: {type: 'vec3', default: {x: 0, y: 0.1, z: 0}},
@@ -25,29 +25,62 @@
         },
         
         testPositions: function() {
-          // Detectar tipo de dispositivo y navegador
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-          const isAndroid = /Android/.test(navigator.userAgent);
-          const isSamsung = /SM-|Galaxy/.test(navigator.userAgent);
-          const screenRatio = window.screen.height / window.screen.width;
+          // Detectar dispositivos específicos
+          const userAgent = navigator.userAgent;
+          const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+          const isAndroid = /Android/.test(userAgent);
+          const isSamsung = /SM-|Galaxy/.test(userAgent);
+          const isXiaomi = /Xiaomi|Redmi|Mi /.test(userAgent) || /MIUI/.test(userAgent);
+          const isHuawei = /Huawei|Honor/.test(userAgent);
+          const isOnePlus = /OnePlus|ONEPLUS/.test(userAgent);
           
-          // Lógica de posicionamiento basada en dispositivo
-          let optimalPosition = this.data.basePosition;
+          // Información del dispositivo para mejor detección
+          const screenRatio = window.screen.height / window.screen.width;
+          const pixelRatio = window.devicePixelRatio || 1;
+          const screenWidth = window.screen.width;
+          const screenHeight = window.screen.height;
+          
+          let optimalPosition = this.data.basePosition; // Default: 0, 0.1, 0
+          let deviceInfo = 'Desconocido';
           
           if (isIOS) {
-            // iOS tiende a necesitar posición base
             optimalPosition = this.data.basePosition;
+            deviceInfo = 'iOS';
           } else if (isAndroid) {
-            if (isSamsung || screenRatio > 2) {
-              // Dispositivos Samsung o pantallas muy altas
+            if (isSamsung) {
+              // Samsung necesita posición alternativa
               optimalPosition = this.data.alternatePosition;
-            } else {
+              deviceInfo = 'Samsung';
+            } else if (isXiaomi) {
+              // Xiaomi (incluyendo Redmi Note 11) usa posición base
               optimalPosition = this.data.basePosition;
+              deviceInfo = 'Xiaomi/Redmi';
+            } else if (isHuawei) {
+              optimalPosition = this.data.basePosition;
+              deviceInfo = 'Huawei';
+            } else if (isOnePlus) {
+              optimalPosition = this.data.basePosition;
+              deviceInfo = 'OnePlus';
+            } else if (screenRatio > 2.1) {
+              // Pantallas muy altas (21:9 o más)
+              optimalPosition = this.data.alternatePosition;
+              deviceInfo = 'Android pantalla alta';
+            } else {
+              // Android genérico
+              optimalPosition = this.data.basePosition;
+              deviceInfo = 'Android genérico';
             }
           }
           
           this.el.setAttribute('position', optimalPosition);
-          console.log('Posición aplicada:', optimalPosition, 'Dispositivo:', {isIOS, isAndroid, isSamsung, screenRatio});
+          console.log('Dispositivo detectado:', deviceInfo);
+          console.log('Posición aplicada:', optimalPosition);
+          console.log('Detalles:', {
+            userAgent: userAgent.substring(0, 100),
+            screenRatio: screenRatio.toFixed(2),
+            screenSize: screenWidth + 'x' + screenHeight,
+            pixelRatio: pixelRatio
+          });
         }
       });
 
@@ -165,14 +198,29 @@
         left: 0 !important;
       }
       
-      /* Canvas de A-Frame sin transformaciones */
+      /* Controles más estrictos para el canvas */
       a-scene canvas {
         width: 100vw !important;
         height: 100vh !important;
         object-fit: cover !important;
+        object-position: center !important;
         transform: none !important;
         max-width: none !important;
         max-height: none !important;
+        min-width: 100vw !important;
+        min-height: 100vh !important;
+        scale: 1 !important;
+        zoom: 1 !important;
+      }
+      
+      /* Prevenir cualquier transformación del video de fondo */
+      a-scene canvas,
+      a-scene video {
+        -webkit-transform: scale(1) !important;
+        -moz-transform: scale(1) !important;
+        -ms-transform: scale(1) !important;
+        -o-transform: scale(1) !important;
+        transform: scale(1) !important;
       }
       
       body {
@@ -224,7 +272,7 @@
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false;trackingMethod:best;sourceWidth:640;sourceHeight:480;displayWidth:640;displayHeight:480;cameraParametersUrl:https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/data/camera_para.dat"
+      arjs="sourceType:webcam;debugUIEnabled:false;trackingMethod:best;sourceWidth:1280;sourceHeight:720;displayWidth:1280;displayHeight:720;cameraParametersUrl:https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/data/camera_para.dat"
       embedded
       gesture-detector
       renderer="logarithmicDepthBuffer:true;precision:medium;antialias:true;alpha:true"
