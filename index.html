@@ -3,12 +3,48 @@
   <head>
     <meta charset="utf-8" />
     <title>AR-video con sonido</title>
+
     <!-- A-Frame + AR.js -->
     <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
     <!-- Gestos pinch / rotate -->
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+
+    <!-- Script para elegir cámara gran angular -->
+    <script>
+      async function selectCameraAndStart() {
+        const scene = document.querySelector('a-scene');
+
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+          console.log('Cámaras detectadas:', videoDevices);
+
+          // Busca cámara gran angular
+          const wideCam = videoDevices.find(d => /wide|ultra/i.test(d.label));
+          let arjsConfig = 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;';
+
+          if (wideCam) {
+            console.log('Usando cámara gran angular:', wideCam.label);
+            arjsConfig = `sourceType: webcam; deviceId: ${wideCam.deviceId}; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;`;
+          } else {
+            console.log('No se detectó cámara gran angular, usando cámara trasera por defecto.');
+          }
+
+          scene.setAttribute('arjs', arjsConfig);
+
+        } catch (err) {
+          console.error('Error seleccionando cámara:', err);
+          scene.setAttribute('arjs', 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;');
+        }
+      }
+
+      window.addEventListener('load', selectCameraAndStart);
+    </script>
+
     <!-- Componente vídeo -->
     <script>
       AFRAME.registerComponent('videohandler', {
@@ -16,14 +52,12 @@
           const marker  = this.el;
           const vid     = document.querySelector('#vid');
           const overlay = document.getElementById('overlay');
-          let tapDone   = false;   // ¿el usuario ya tocó?
-          let markerOn  = false;   // ¿la marca está visible?
-          
-          // *** SOLO AGREGADO: Detección de iOS para corregir cuadro negro ***
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          let tapDone   = false;
+          let markerOn  = false;
 
-          // *** SOLO AGREGADO: Configuración específica para iOS ***
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
           if (isIOS) {
             vid.setAttribute('muted', 'true');
             vid.setAttribute('playsinline', 'true');
@@ -31,8 +65,7 @@
             vid.muted = true;
             vid.load();
           }
-          
-          /* ---- 1) Primer tap: desbloquea audio ---- */
+
           const unlock = () => {
             tapDone = true;
             overlay.style.display = 'none';
@@ -42,7 +75,7 @@
           };
           window.addEventListener('click',  unlock);
           window.addEventListener('touchend', unlock);
-          /* ---- 2) Marca encontrada / perdida ---- */
+
           marker.addEventListener('markerFound', () => {
             markerOn = true;
             tryPlay();
@@ -51,12 +84,10 @@
             markerOn = false;
             vid.pause();
           });
-          /* ---- 3) Reproducir sólo si tap + marca ---- */
+
           function tryPlay () {
             if (tapDone && markerOn) {
-              // *** MODIFICADO: Manejo especial para iOS ***
               if (isIOS) {
-                // En iOS, empezar muted y luego habilitar audio
                 vid.muted = true;
                 vid.play().then(() => {
                   setTimeout(() => {
@@ -64,23 +95,22 @@
                   }, 100);
                 }).catch(() => {});
               } else {
-                // Android/otros - código original que funcionaba
-                vid.muted = false;              // asegurarse de que suene
-                vid.play().catch(() => {});     // ignora bloqueos extra
+                vid.muted = false;
+                vid.play().catch(() => {});
               }
             }
           }
         }
       });
     </script>
+
     <style>
-      /* Overlay "Toca para activar audio" — ahora transparente  */
       #overlay{
         position:fixed; inset:0;
         display:flex; align-items:center; justify-content:center;
-        background:transparent;               /* ← sin gris */
+        background:transparent;
         color:#fff; font-family:sans-serif; font-size:1.25rem;
-        text-shadow:0 0 6px #000;             /* para que se lea sobre cámara */
+        text-shadow:0 0 6px #000;
         z-index:999; text-align:center; padding:1rem;
       }
     </style>
@@ -90,19 +120,19 @@
     <div id="overlay">
       <div>
         <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.8;">Si es necesario reduce el zoom de tu cámara. Apunta tu cámara hacia el marcador.</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">Si es necesario reduce el zoom de tu cámara. Apunta hacia el marcador.</p>
       </div>
     </div>
+
     <!-- Escena -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false"
       embedded
       gesture-detector
       id="scene">
+
       <a-assets>
-        <!-- sin muted / sin autoplay -->
         <video id="vid"
                src="assets/asset.mp4"
                preload="auto"
@@ -111,6 +141,7 @@
                playsinline
                webkit-playsinline></video>
       </a-assets>
+
       <a-marker type="pattern"
                 preset="custom"
                 url="assets/marker.patt"
@@ -123,14 +154,14 @@
                 emitevents="true"
                 cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
-        <!-- *** EXACTAMENTE IGUAL al código original que funcionaba en Xiaomi *** -->
         <a-video src="#vid"
                  scale="1 1 1"
-                 position="0 0.1 0"
+                 position="0 0 0" <!-- ajustar si en Samsung sigue desplazado -->
                  rotation="-90 0 0"
                  class="clickable"
                  gesture-handler></a-video>
       </a-marker>
+
       <a-entity camera></a-entity>
     </a-scene>
   </body>
