@@ -15,37 +15,45 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
     
     <script>
-      // Override de getUserMedia para forzar cámara gran angular
+      // Override más agresivo de getUserMedia para forzar gran angular
       (function() {
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
         
         navigator.mediaDevices.getUserMedia = function(constraints) {
-          // Si se está pidiendo video, modificar constraints para evitar telefoto
+          // Debug en pantalla
+          const debugEl = document.getElementById('debug-text');
+          
           if (constraints && constraints.video) {
+            // Configuración muy específica para evitar telefoto
             const videoConstraints = {
               facingMode: { exact: "environment" },
-              width: { ideal: 640, max: 1280 },
-              height: { ideal: 480, max: 720 }
+              width: { ideal: 480, max: 640 },  // Más bajo para forzar gran angular
+              height: { ideal: 360, max: 480 },
+              frameRate: { ideal: 30, max: 30 }
             };
             
-            // Para dispositivos con múltiples cámaras traseras
-            if (typeof constraints.video === 'object') {
-              constraints.video = {
-                ...constraints.video,
-                ...videoConstraints
-              };
-            } else {
-              constraints.video = videoConstraints;
-            }
+            constraints.video = videoConstraints;
             
-            console.log('Constraints de cámara modificadas:', constraints);
+            if (debugEl) {
+              debugEl.innerHTML = `Cámara solicitada:<br>Width: ${videoConstraints.width.ideal}<br>Height: ${videoConstraints.height.ideal}<br>FacingMode: environment`;
+            }
           }
           
-          return originalGetUserMedia.call(this, constraints);
+          return originalGetUserMedia.call(this, constraints).then(stream => {
+            // Obtener info real de la cámara
+            const videoTrack = stream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+            
+            if (debugEl) {
+              debugEl.innerHTML += `<br><br>Cámara obtenida:<br>Width: ${settings.width}<br>Height: ${settings.height}<br>FacingMode: ${settings.facingMode}`;
+            }
+            
+            return stream;
+          });
         };
       })();
 
-      // Componente para posicionamiento específico por dispositivo
+      // Componente para posicionamiento con múltiples opciones
       AFRAME.registerComponent('smart-video-position', {
         init: function() {
           const userAgent = navigator.userAgent;
@@ -53,32 +61,70 @@
           const isSamsung = /SM-|Galaxy/.test(userAgent);
           const isXiaomi = /Xiaomi|Redmi|Mi |MIUI/.test(userAgent);
           
-          let position = "0 0.1 0"; // Posición por defecto (funciona en Xiaomi)
-          let rotation = "-90 0 0"; // Rotación por defecto
+          const debugEl = document.getElementById('debug-text');
+          const debugInfo = document.getElementById('debug-info');
           
-          if (isIOS) {
-            // iPhone necesita posición centrada
-            position = "0 0 0";
-            rotation = "-90 0 0";
-          } else if (isSamsung) {
-            // Samsung usa posición alternativa
-            position = "0 0 0";
-            rotation = "-90 0 0";
-          } else if (isXiaomi) {
-            // Xiaomi mantiene la posición que funcionaba
-            position = "0 0.1 0";
-            rotation = "-90 0 0";
+          // Mostrar debug info
+          if (debugInfo) {
+            debugInfo.style.display = 'block';
           }
           
-          // Aplicar configuración
-          this.el.setAttribute('position', position);
-          this.el.setAttribute('rotation', rotation);
+          // Probar múltiples posiciones para encontrar la correcta
+          const positions = [
+            { pos: "0 0.1 0", desc: "Original Xiaomi" },
+            { pos: "0 0 0", desc: "Centrado" },
+            { pos: "0 0.05 0", desc: "Ligeramente elevado" },
+            { pos: "0 -0.1 0", desc: "Más abajo" },
+            { pos: "0 0.2 0", desc: "Más arriba" }
+          ];
           
-          console.log('Dispositivo detectado:', {
-            isIOS, isSamsung, isXiaomi,
-            position, rotation,
-            userAgent: userAgent.substring(0, 50) + '...'
-          });
+          let selectedPosition = positions[0]; // Default
+          
+          if (isIOS) {
+            selectedPosition = positions[1]; // Centrado para iOS
+          } else if (isSamsung) {
+            selectedPosition = positions[1]; // Centrado para Samsung
+          } else if (isXiaomi) {
+            selectedPosition = positions[0]; // Original para Xiaomi
+          }
+          
+          // Aplicar posición inicial
+          this.el.setAttribute('position', selectedPosition.pos);
+          
+          // Debug info actualizada
+          if (debugEl) {
+            debugEl.innerHTML += `<br><br>Dispositivo: ${isIOS ? 'iOS' : isSamsung ? 'Samsung' : isXiaomi ? 'Xiaomi' : 'Android'}<br>Posición: ${selectedPosition.desc}<br>Coords: ${selectedPosition.pos}`;
+          }
+          
+          // Cambiar posición cada 3 segundos para encontrar la correcta (solo para testing)
+          let currentIndex = positions.findIndex(p => p.pos === selectedPosition.pos);
+          let testingActive = false;
+          
+          // Función para probar siguiente posición
+          window.testNextPosition = () => {
+            if (!testingActive) {
+              testingActive = true;
+              const interval = setInterval(() => {
+                currentIndex = (currentIndex + 1) % positions.length;
+                const newPos = positions[currentIndex];
+                this.el.setAttribute('position', newPos.pos);
+                
+                if (debugEl) {
+                  debugEl.innerHTML = debugEl.innerHTML.replace(/Posición:.*/, `Posición: ${newPos.desc}<br>Coords: ${newPos.pos}<br><br>🔄 Probando posiciones automáticamente...`);
+                }
+                
+                if (currentIndex === 0) {
+                  clearInterval(interval);
+                  testingActive = false;
+                  if (debugEl) {
+                    debugEl.innerHTML += '<br>✅ Ciclo completado';
+                  }
+                }
+              }, 2000);
+            }
+          };
+          
+          console.log('Para probar todas las posiciones, ejecuta: testNextPosition()');
         }
       });
 
@@ -244,11 +290,16 @@
       </div>
     </div>
     
-    <!-- Escena AR con configuración de cámara específica -->
+    <!-- Debug info en pantalla -->
+    <div id="debug-info" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; z-index: 1000; max-width: 300px; display: none;">
+      <div id="debug-text">Cargando...</div>
+    </div>
+    
+    <!-- Escena AR con resolución más baja para evitar telefoto -->
     <a-scene
       vr-mode-ui="enabled:false"
       loading-screen="enabled:false"
-      arjs="sourceType:webcam;debugUIEnabled:false;sourceWidth:640;sourceHeight:480"
+      arjs="sourceType:webcam;debugUIEnabled:false;sourceWidth:480;sourceHeight:360"
       embedded
       gesture-detector
       id="scene">
