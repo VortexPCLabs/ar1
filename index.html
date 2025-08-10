@@ -15,12 +15,13 @@
     <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
     
     <script>
-      // Componente de video con configuración muy visible
+      // Componente de video con múltiples estrategias
       AFRAME.registerComponent('videohandler', {
         init () {
           const marker  = this.el;
           const vid     = document.querySelector('#vid');
           const overlay = document.getElementById('overlay');
+          const backupVideo = document.querySelector('#backup-video');
           let tapDone   = false;
           let markerOn  = false;
           
@@ -66,11 +67,21 @@
           marker.addEventListener('markerFound', () => {
             markerOn = true;
             tryPlay();
+            
+            // Para dispositivos problemáticos, mostrar video backup después de 2 segundos
+            setTimeout(() => {
+              if (markerOn && backupVideo) {
+                backupVideo.setAttribute('visible', 'true');
+              }
+            }, 2000);
           });
           
           marker.addEventListener('markerLost', () => {
             markerOn = false;
             vid.pause();
+            if (backupVideo) {
+              backupVideo.setAttribute('visible', 'false');
+            }
           });
 
           async function tryPlay () {
@@ -143,7 +154,7 @@
     <div id="overlay">
       <div>
         <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.8;">El video debería ser MUY grande y visible</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">El cubo rojo marca el centro exacto del marcador</p>
       </div>
     </div>
     
@@ -180,36 +191,44 @@
                 cursor="fuse:false;rayOrigin:mouse"
                 id="markerA">
         
-        <!-- Video MUY GRANDE para asegurar que sea visible -->
+        <!-- Video centrado y de tamaño normal -->
         <a-video src="#vid"
-                 width="10"
-                 height="8"
-                 position="0 0 0"
+                 width="2"
+                 height="1.5"
+                 position="1 0 0"
                  rotation="-90 0 0"
                  material="side: double; transparent: false; shader: flat"
                  class="clickable"
                  gesture-handler></a-video>
         
-        <!-- Cubo rojo como referencia visual -->
+        <!-- Objetos de referencia para calibración -->
         <a-box color="red" 
-               width="0.5" 
-               height="0.5" 
-               depth="0.1"
-               position="0 1 0"
+               width="0.2" 
+               height="0.2" 
+               depth="0.05"
+               position="0 0 0"
                material="transparent: false"></a-box>
         
-        <!-- Esfera azul como segunda referencia -->
         <a-sphere color="blue" 
-                  radius="0.3"
-                  position="1 0 0"
+                  radius="0.1"
+                  position="0.5 0 0"
                   material="transparent: false"></a-sphere>
         
-        <!-- Cilindro verde como tercera referencia -->
         <a-cylinder color="green" 
-                    radius="0.2" 
-                    height="0.5"
-                    position="-1 0 0"
+                    radius="0.05" 
+                    height="0.2"
+                    position="-0.5 0 0"
                     material="transparent: false"></a-cylinder>
+        
+        <!-- Marcador especial para dispositivos problemáticos -->
+        <a-plane src="#vid"
+                 width="2"
+                 height="1.5"
+                 position="0 0 0.1"
+                 rotation="-90 0 0"
+                 material="side: double; transparent: false; shader: flat; opacity: 0.8"
+                 visible="false"
+                 id="backup-video"></a-plane>
       </a-marker>
       
       <a-entity camera></a-entity>
