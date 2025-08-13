@@ -1,183 +1,191 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <title>AR-video demo</title>
+<head>
+  <meta charset="utf-8" />
+  <title>AR-video demo</title>
 
-    <!-- A-Frame + AR.js -->
-    <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- A-Frame + AR.js -->
+  <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
-    <!-- Gestos pinch / rotate -->
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+  <!-- Gestos pinch / rotate -->
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
 
-    <!-- Script para seleccionar la cámara más adecuada -->
-    <script>
-      async function selectCameraAndStart() {
-        const scene = document.querySelector('a-scene');
+  <!-- Script para seleccionar la cámara -->
+  <script>
+    async function selectCameraAndStart() {
+      const scene = document.querySelector('a-scene');
 
-        try {
-          // Paso 1: pedir permiso con baja resolución para evitar telefoto
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { exact: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              aspectRatio: 16/9
-            }
-          });
-
-          // Paso 2: enumerar cámaras con permiso concedido
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-          console.log('Cámaras detectadas:', videoDevices);
-
-          // Buscar gran angular
-          const wideCam = videoDevices.find(d => /wide|ultra/i.test(d.label));
-          let arjsConfig;
-
-          if (wideCam) {
-            console.log('Usando cámara gran angular:', wideCam.label);
-            arjsConfig = sourceType: webcam; deviceId: ${wideCam.deviceId}; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;;
-          } else {
-            console.log('No se detectó cámara gran angular. Usando trasera con baja resolución.');
-            arjsConfig = 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;';
+      try {
+        // Paso 1: pedir permiso inicial para desbloquear nombres de cámara
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { exact: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            aspectRatio: 16 / 9
           }
+        });
 
-          // Aplicar configuración a AR.js
-          scene.setAttribute('arjs', arjsConfig);
+        // Paso 2: enumerar dispositivos
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
-        } catch (err) {
-          console.error('Error seleccionando cámara:', err);
-          // Fallback seguro
-          scene.setAttribute('arjs', 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 640; sourceHeight: 480; displayWidth: 640; displayHeight: 480;');
+        console.log('Cámaras detectadas:', videoDevices);
+
+        // Buscar gran angular
+        const wideCam = videoDevices.find(d =>
+          /wide|ultra/i.test(d.label)
+        );
+
+        let arjsConfig;
+
+        if (wideCam) {
+          console.log('Usando cámara gran angular:', wideCam.label);
+          arjsConfig = `sourceType: webcam; deviceId: ${wideCam.deviceId}; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;`;
+        } else {
+          console.log('Usando cámara trasera estándar.');
+          arjsConfig = 'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 720; displayWidth: 1280; displayHeight: 720;';
+        }
+
+        // Aplicar configuración a AR.js
+        scene.setAttribute('arjs', arjsConfig);
+
+      } catch (err) {
+        console.error('Error seleccionando cámara:', err);
+        // Fallback seguro
+        scene.setAttribute(
+          'arjs',
+          'sourceType: webcam; facingMode: environment; debugUIEnabled: false; sourceWidth: 640; sourceHeight: 480; displayWidth: 640; displayHeight: 480;'
+        );
+      }
+    }
+
+    window.addEventListener('load', selectCameraAndStart);
+  </script>
+
+  <!-- Componente vídeo -->
+  <script>
+    AFRAME.registerComponent('videohandler', {
+      init () {
+        const marker  = this.el;
+        const vid     = document.querySelector('#vid');
+        const overlay = document.getElementById('overlay');
+        let tapDone   = false;
+        let markerOn  = false;
+
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        if (isIOS) {
+          vid.setAttribute('muted', 'true');
+          vid.setAttribute('playsinline', 'true');
+          vid.setAttribute('webkit-playsinline', 'true');
+          vid.muted = true;
+          vid.load();
+        }
+
+        const unlock = () => {
+          tapDone = true;
+          overlay.style.display = 'none';
+          tryPlay();
+          window.removeEventListener('click',  unlock);
+          window.removeEventListener('touchend', unlock);
+        };
+        window.addEventListener('click',  unlock);
+        window.addEventListener('touchend', unlock);
+
+        marker.addEventListener('markerFound', () => {
+          markerOn = true;
+          tryPlay();
+        });
+        marker.addEventListener('markerLost', () => {
+          markerOn = false;
+          vid.pause();
+        });
+
+        function tryPlay () {
+          if (tapDone && markerOn) {
+            if (isIOS) {
+              vid.muted = true;
+              vid.play().then(() => {
+                setTimeout(() => {
+                  vid.muted = false;
+                }, 100);
+              }).catch(() => {});
+            } else {
+              vid.muted = false;
+              vid.play().catch(() => {});
+            }
+          }
         }
       }
+    });
+  </script>
 
-      window.addEventListener('load', selectCameraAndStart);
-    </script>
-
-    <!-- Componente vídeo -->
-    <script>
-      AFRAME.registerComponent('videohandler', {
-        init () {
-          const marker  = this.el;
-          const vid     = document.querySelector('#vid');
-          const overlay = document.getElementById('overlay');
-          let tapDone   = false;
-          let markerOn  = false;
-
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-          if (isIOS) {
-            vid.setAttribute('muted', 'true');
-            vid.setAttribute('playsinline', 'true');
-            vid.setAttribute('webkit-playsinline', 'true');
-            vid.muted = true;
-            vid.load();
-          }
-
-          const unlock = () => {
-            tapDone = true;
-            overlay.style.display = 'none';
-            tryPlay();
-            window.removeEventListener('click',  unlock);
-            window.removeEventListener('touchend', unlock);
-          };
-          window.addEventListener('click',  unlock);
-          window.addEventListener('touchend', unlock);
-
-          marker.addEventListener('markerFound', () => {
-            markerOn = true;
-            tryPlay();
-          });
-          marker.addEventListener('markerLost', () => {
-            markerOn = false;
-            vid.pause();
-          });
-
-          function tryPlay () {
-            if (tapDone && markerOn) {
-              if (isIOS) {
-                vid.muted = true;
-                vid.play().then(() => {
-                  setTimeout(() => {
-                    vid.muted = false;
-                  }, 100);
-                }).catch(() => {});
-              } else {
-                vid.muted = false;
-                vid.play().catch(() => {});
-              }
-            }
-          }
-        }
-      });
-    </script>
-
-    <style>
-      #overlay{
-        position:fixed; inset:0;
-        display:flex; align-items:center; justify-content:center;
-        background:transparent;
-        color:#fff; font-family:sans-serif; font-size:1.25rem;
-        text-shadow:0 0 6px #000;
-        z-index:999; text-align:center; padding:1rem;
-      }
-    </style>
-  </head>
-  <body style="margin:0; overflow:hidden;">
-    <!-- Overlay -->
-    <div id="overlay">
-      <div>
-        <p>👆 Toca la pantalla para activar el audio</p>
-        <p style="font-size: 0.9rem; opacity: 0.8;">Si es necesario reduce el zoom de tu cámara. Apunta hacia el marcador.</p>
-      </div>
+  <style>
+    #overlay{
+      position:fixed; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:transparent;
+      color:#fff; font-family:sans-serif; font-size:1.25rem;
+      text-shadow:0 0 6px #000;
+      z-index:999; text-align:center; padding:1rem;
+    }
+  </style>
+</head>
+<body style="margin:0; overflow:hidden;">
+  <!-- Overlay -->
+  <div id="overlay">
+    <div>
+      <p>👆 Toca la pantalla para activar el audio</p>
+      <p style="font-size: 0.9rem; opacity: 0.8;">Apunta hacia el marcador</p>
     </div>
+  </div>
 
-    <!-- Escena -->
-    <a-scene
-      vr-mode-ui="enabled:false"
-      loading-screen="enabled:false"
-      embedded
-      gesture-detector
-      id="scene">
+  <!-- Escena -->
+  <a-scene
+    vr-mode-ui="enabled:false"
+    loading-screen="enabled:false"
+    embedded
+    gesture-detector
+    id="scene">
 
-      <a-assets>
-        <video id="vid"
-               src="assets/asset.mp4"
-               preload="auto"
-               loop
-               crossorigin="anonymous"
-               playsinline
-               webkit-playsinline></video>
-      </a-assets>
+    <a-assets>
+      <video id="vid"
+             src="assets/asset.mp4"
+             preload="auto"
+             loop
+             crossorigin="anonymous"
+             playsinline
+             webkit-playsinline></video>
+    </a-assets>
 
-      <a-marker type="pattern"
-                preset="custom"
-                url="assets/marker.patt"
-                videohandler
-                smooth="true"
-                smoothCount="10"
-                smoothTolerance="0.01"
-                smoothThreshold="5"
-                raycaster="objects:.clickable"
-                emitevents="true"
-                cursor="fuse:false;rayOrigin:mouse"
-                id="markerA">
+    <a-marker type="pattern"
+              preset="custom"
+              url="assets/marker.patt"
+              videohandler
+              smooth="true"
+              smoothCount="10"
+              smoothTolerance="0.01"
+              smoothThreshold="5"
+              raycaster="objects:.clickable"
+              emitevents="true"
+              cursor="fuse:false;rayOrigin:mouse"
+              id="markerA">
 
-        <a-video src="#vid"
-                 scale="1 1 1"
-                 position="0 0 0"
-                 rotation="-90 0 0"
-                 class="clickable"
-                 gesture-handler></a-video>
-      </a-marker>
+      <!-- Zoom bloqueado para evitar desplazamientos -->
+      <a-video src="#vid"
+               scale="1 1 1"
+               position="0 0 0"
+               rotation="-90 0 0"
+               class="clickable"
+               gesture-handler="minScale: 1; maxScale: 1;">
+      </a-video>
+    </a-marker>
 
-      <a-entity camera></a-entity>
-    </a-scene>
-  </body>
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
 </html>
